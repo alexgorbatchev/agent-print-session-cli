@@ -1,0 +1,35 @@
+version: 2
+
+project_name: agent-print-session-cli
+
+builds:
+  - id: print-session
+    main: ./cmd/print-session
+    binary: print-session
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - arm64
+      - amd64
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  mode: keep-existing
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
