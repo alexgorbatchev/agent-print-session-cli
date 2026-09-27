@@ -31,7 +31,7 @@ type printFlags struct {
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "print-session",
+		Use:   "agent-print-session",
 		Short: "Print and inspect AI coding agent session logs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -47,7 +47,7 @@ func newRootCmd() *cobra.Command {
 		Short: "Inspect and print Claude Code session transcripts",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				// Shorthand invocation: print-session claude <session-id>
+				// Shorthand invocation: agent-print-session claude <session-id>
 				flags := getPrintFlags(cmd)
 				return runPrintClaude(cmd, args[0], flags)
 			}

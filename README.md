@@ -1,9 +1,9 @@
-`agent-print-session-cli` provides the `print-session` command-line utility for locating, inspecting, filtering, and printing AI coding agent session transcripts from disk. It translates raw JSONL streams into human-readable terminal output, structured JSON, or concise agent-facing context blocks for resuming past work.
+`agent-print-session-cli` provides the `agent-print-session` command-line utility for locating, inspecting, filtering, and printing AI coding agent session transcripts from disk. It translates raw JSONL streams into human-readable terminal output, structured JSON, or concise agent-facing context blocks for resuming past work.
 
 # What It Does
 
 - **Automatic transcript discovery**: Locates session files by exact path, full session ID, or prefix across standard storage locations (`~/.claude/projects`, `~/.claude/sessions`, `~/.pi/agent/sessions`, and `$XDG_DATA_HOME`).
-- **Subject-first CLI commands**: Provides consistent subcommands across supported harnesses (`print-session claude`, `print-session pi`).
+- **Subject-first CLI commands**: Provides consistent subcommands across supported harnesses (`agent-print-session claude`, `agent-print-session pi`).
 - **Granular event filtering**: Focuses output on errors (`--errors`), file edits (`--files`), tool executions (`--tools`), prompts (`--prompts`), or the most recent turn (`--last-turn`).
 - **Work resumption & handoff**: Extracts initial goals, active branches, modified files, recent errors, and next steps via `handoff` (or aliases `continue`, `resume`).
 - **High-level summaries**: Aggregates token usage, session duration, and tool execution tallies via `summary`.
@@ -11,8 +11,8 @@
 
 # How It Works
 
-- The user invokes `print-session <harness> <action> <session-id>` (or uses shorthand `print-session <harness> <session-id>`).
-- `print-session` resolves the session target: if a direct file path is provided, it reads that path; otherwise, it scans standard harness directories for matching `.jsonl` files.
+- The user invokes `agent-print-session <harness> <action> <session-id>` (or uses shorthand `agent-print-session <harness> <session-id>`).
+- `agent-print-session` resolves the session target: if a direct file path is provided, it reads that path; otherwise, it scans standard harness directories for matching `.jsonl` files.
 - The utility parses each line using `github.com/alexgorbatchev/agent-parser`, constructing a structured event stream.
 - The stream passes through requested filters (`--files`, `--errors`, `--tail`, `--last-turn`) and pagination.
 - Filtered events are rendered to stdout in styled human mode, machine-readable JSON (`--json`), or token-conservative agent mode (`AGENT=1`).
@@ -20,7 +20,7 @@
 # How it Really Works
 
 - **Discovery traversal**: Search routines scan projects and session directories non-recursively for exact UUID matches first, falling back to prefix matching across candidate `.jsonl` filenames without invoking shell utilities.
-- **Zero file mutation**: `print-session` strictly opens transcript files in read-only mode, never writing or creating temporary files.
+- **Zero file mutation**: `agent-print-session` strictly opens transcript files in read-only mode, never writing or creating temporary files.
 - **Agent mode token conservation**: When `AGENT=1`, horizontal divider lines, decorative boxes, and padding are omitted in favor of compact text tags (`OK:`, `ERR:`), and output defaults to the most recent 100 events unless `--all` is specified.
 - **Diff formatting**: Tool calls containing file modifications (`Edit`, `Write`, `apply_patch`) are formatted into colored terminal diffs with line numbers and added/deleted indicators.
 - **Exit codes**: Returns `0` on successful parsing, `1` on missing sessions, invalid flags, or unreadable files.
@@ -36,7 +36,7 @@ Download the latest prebuilt binary from the [GitHub Releases](https://github.co
 
 ```bash
 curl -sSL https://github.com/alexgorbatchev/agent-print-session-cli/releases/download/v1.0.0/agent-print-session-cli_1.0.0_darwin_arm64.tar.gz | tar -xz
-sudo mv print-session /usr/local/bin/
+sudo mv agent-print-session /usr/local/bin/
 ```
 
 # Quick Start
@@ -44,7 +44,7 @@ sudo mv print-session /usr/local/bin/
 ### Inspect a session transcript
 
 ```bash
-print-session claude c0ffee-1234
+agent-print-session claude c0ffee-1234
 ```
 
 Sample Output:
@@ -71,13 +71,13 @@ Model: claude-3-7-sonnet | Tokens: 4,120 in, 580 out
 ### Resume past work with a handoff summary
 
 ```bash
-print-session claude handoff c0ffee-1234
+agent-print-session claude handoff c0ffee-1234
 ```
 
 ### Output JSON for automated processing
 
 ```bash
-print-session pi print --json --last-turn 4d3f21
+agent-print-session pi print --json --last-turn 4d3f21
 ```
 
 # Options & Flags
@@ -89,7 +89,7 @@ print-session pi print --json --last-turn 4d3f21
 | `--help` | `-h` | `false` | Display help screen and command hierarchy |
 | `--version` | `-v` | `false` | Display version information |
 
-### `print-session [claude|pi] print` Flags
+### `agent-print-session [claude|pi] print` Flags
 
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -110,8 +110,8 @@ print-session pi print --json --last-turn 4d3f21
 
 | Harness | Subcommand | Default Search Paths |
 | :--- | :--- | :--- |
-| **Claude Code** | `print-session claude` | `~/.claude/projects/`, `~/.claude/sessions/` |
-| **Pi Coding Agent** | `print-session pi` | `~/.pi/agent/sessions/` |
+| **Claude Code** | `agent-print-session claude` | `~/.claude/projects/`, `~/.claude/sessions/` |
+| **Pi Coding Agent** | `agent-print-session pi` | `~/.pi/agent/sessions/` |
 
 # License
 

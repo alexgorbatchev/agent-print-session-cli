@@ -34,8 +34,8 @@ func TestCLI_Help(t *testing.T) {
 	}
 
 	helpText := out.String()
-	if !strings.Contains(helpText, "print-session") {
-		t.Errorf("expected 'print-session' in help, got: %s", helpText)
+	if !strings.Contains(helpText, "agent-print-session") {
+		t.Errorf("expected 'agent-print-session' in help, got: %s", helpText)
 	}
 	if !strings.Contains(helpText, "claude") {
 		t.Errorf("expected 'claude' in help tree, got: %s", helpText)
@@ -212,7 +212,7 @@ func TestCLI_ClaudeNoArgs(t *testing.T) {
 func TestMainFunc(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	os.Args = []string{"print-session", "--version"}
+	os.Args = []string{"agent-print-session", "--version"}
 	main()
 }
 
@@ -335,7 +335,7 @@ func TestMain_ErrorExit(t *testing.T) {
 	exitFunc = func(code int) {
 		exitCalled = true
 	}
-	os.Args = []string{"print-session", "unknown-command-xyz"}
+	os.Args = []string{"agent-print-session", "unknown-command-xyz"}
 	main()
 	if !exitCalled {
 		t.Errorf("expected exitFunc to be called on error")

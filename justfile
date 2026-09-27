@@ -8,15 +8,15 @@ default:
 # Build the binary into bin/
 build:
     @mkdir -p bin
-    go build -o bin/print-session ./cmd/print-session
+    go build -o bin/agent-print-session ./cmd/agent-print-session
 
 # Run the CLI in human mode, e.g. `just run --help`
 run *args:
-    go run ./cmd/print-session {{args}}
+    go run ./cmd/agent-print-session {{args}}
 
 # Run the CLI in agent mode, e.g. `just run-ai --help`
 run-ai *args:
-    AGENT=1 go run ./cmd/print-session {{args}}
+    AGENT=1 go run ./cmd/agent-print-session {{args}}
 
 # Run all unit tests with race detector
 test:
