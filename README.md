@@ -1,4 +1,4 @@
-`agent-print-session-cli` provides the `agent-print-session` command-line utility for locating, inspecting, filtering, and printing AI coding agent session transcripts from disk. It translates raw JSONL streams into human-readable terminal output, structured JSON, or concise agent-facing context blocks for resuming past work.
+`agent-print-session` locates, inspects, filters, and prints AI coding agent session transcripts from disk. It translates raw JSONL streams into human-readable terminal output, structured JSON, or concise agent-facing context blocks for resuming past work.
 
 # What It Does
 
