@@ -1,0 +1,15 @@
+# Binaries & build outputs
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.out
+
+# Temporary directories
+.tmp/
+
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
