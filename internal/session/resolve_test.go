@@ -209,3 +209,121 @@ func TestFindPiSession_XDG(t *testing.T) {
 		t.Fatalf("expected %s, got %s", xdgFile, found)
 	}
 }
+
+func TestFindCodexSession_EmptyAndDirect(t *testing.T) {
+	if _, err := FindCodexSession(""); err == nil {
+		t.Fatal("expected error on empty target, got nil")
+	}
+	if _, err := FindCodexSession("   "); err == nil {
+		t.Fatal("expected error on whitespace target, got nil")
+	}
+
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "rollout-2026-06-12T16-08-36-018f4a7c-1234-7000-8000-abcdef123456.jsonl")
+	if err := os.WriteFile(filePath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := FindCodexSession(filePath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found != filePath {
+		t.Fatalf("expected %s, got %s", filePath, found)
+	}
+}
+
+func TestFindCodexSession_SearchDirs(t *testing.T) {
+	tmpRoot := t.TempDir()
+	// Partitioned date directory: sessions/2026/06/12/
+	dateDir := filepath.Join(tmpRoot, "sessions", "2026", "06", "12")
+	if err := os.MkdirAll(dateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	codexFile := filepath.Join(dateDir, "rollout-2026-06-12T16-08-36-018f4a7c-1234-7000-8000-abcdef123456.jsonl")
+	if err := os.WriteFile(codexFile, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("CODEX_SESSIONS_DIR", filepath.Join(tmpRoot, "sessions"))
+
+	// 1. Exact session ID search
+	found, err := FindCodexSession("018f4a7c-1234-7000-8000-abcdef123456")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found != codexFile {
+		t.Fatalf("expected %s, got %s", codexFile, found)
+	}
+
+	// 2. Prefix search
+	found, err = FindCodexSession("018f4a7c")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found != codexFile {
+		t.Fatalf("expected %s, got %s", codexFile, found)
+	}
+
+	// 3. Full filename search (with .jsonl)
+	found, err = FindCodexSession("rollout-2026-06-12T16-08-36-018f4a7c-1234-7000-8000-abcdef123456.jsonl")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found != codexFile {
+		t.Fatalf("expected %s, got %s", codexFile, found)
+	}
+
+	// 4. Missing session
+	if _, err := FindCodexSession("non-existent-codex-id"); err == nil {
+		t.Fatal("expected error on missing session, got nil")
+	}
+}
+
+func TestFindCodexSession_HomeAndXDG(t *testing.T) {
+	tmpRoot := t.TempDir()
+
+	// CODEX_HOME
+	codexHome := filepath.Join(tmpRoot, "codex_home")
+	codexHomeSess := filepath.Join(codexHome, "sessions")
+	if err := os.MkdirAll(codexHomeSess, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	homeFile := filepath.Join(codexHomeSess, "rollout-2026-01-01T00-00-00-home-test-123.jsonl")
+	if err := os.WriteFile(homeFile, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("CODEX_SESSIONS_DIR", "")
+	t.Setenv("CODEX_HOME", codexHome)
+
+	found, err := FindCodexSession("home-test-123")
+	if err != nil {
+		t.Fatalf("unexpected error on CODEX_HOME: %v", err)
+	}
+	if found != homeFile {
+		t.Fatalf("expected %s, got %s", homeFile, found)
+	}
+
+	// XDG_DATA_HOME
+	t.Setenv("CODEX_HOME", "")
+	xdgDir := filepath.Join(tmpRoot, "ai-registry", "codex", "sessions")
+	if err := os.MkdirAll(xdgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	xdgFile := filepath.Join(xdgDir, "rollout-2026-02-02T00-00-00-xdg-test-456.jsonl")
+	if err := os.WriteFile(xdgFile, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("XDG_DATA_HOME", tmpRoot)
+
+	found, err = FindCodexSession("xdg-test-456")
+	if err != nil {
+		t.Fatalf("unexpected error on XDG: %v", err)
+	}
+	if found != xdgFile {
+		t.Fatalf("expected %s, got %s", xdgFile, found)
+	}
+}

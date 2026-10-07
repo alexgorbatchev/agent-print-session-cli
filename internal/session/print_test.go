@@ -151,7 +151,7 @@ func TestPrintClaudeSession_EdgeEventsAndFormatting(t *testing.T) {
 		},
 		{
 			EventType: "tool_result",
-			Data:     parser.EventData{},
+			Data:      parser.EventData{},
 		},
 		{
 			EventType: "file_modification",
@@ -441,6 +441,83 @@ func TestPrintPiSession_Cases(t *testing.T) {
 	// 3. File not found
 	var notFoundBuf bytes.Buffer
 	if err := PrintPiSession(&notFoundBuf, "/non/existent/pi.jsonl", PrintOptions{}); err == nil {
+		t.Fatal("expected error on non-existent file, got nil")
+	}
+}
+
+const sampleCodexLog = `{"type":"session_meta","timestamp":"2026-06-12T16:08:36.123Z","payload":{"id":"codex-cli-test-123","timestamp":"2026-06-12T16:08:36.123Z","cwd":"/codex-repo","originator":"codex-tui","cli_version":"0.121.0","source":"cli","model_provider":"openai","git":{"commit_hash":"abcdef123","branch":"feature/codex-support","repository_url":"git@github.com:org/repo.git"}}}
+{"type":"turn_context","timestamp":"2026-06-12T16:08:37.000Z","payload":{"turn_id":"turn-1","cwd":"/codex-repo","model":"o3-mini"}}
+{"type":"event_msg","timestamp":"2026-06-12T16:08:38.000Z","payload":{"type":"user_message","message":"fix bug in main.go"}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:39.000Z","payload":{"type":"function_call","name":"exec_command","call_id":"c1","arguments":"{\"cmd\":\"ls -la\"}"}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:40.000Z","payload":{"type":"function_call_output","call_id":"c1","output":"main.go go.mod"}}
+{"type":"event_msg","timestamp":"2026-06-12T16:08:41.000Z","payload":{"type":"agent_message","message":"I inspected the directory."}}
+`
+
+func TestPrintCodexSession_Cases(t *testing.T) {
+	logPath := createTestLogFile(t, sampleCodexLog)
+
+	// 1. Human mode
+	var humanBuf bytes.Buffer
+	if err := PrintCodexSession(&humanBuf, logPath, PrintOptions{AgentMode: false}); err != nil {
+		t.Fatalf("unexpected error on PrintCodexSession human mode: %v", err)
+	}
+	humanOut := humanBuf.String()
+	if !strings.Contains(humanOut, "[USER]") || !strings.Contains(humanOut, "fix bug in main.go") {
+		t.Errorf("expected USER prompt in Codex human mode: %s", humanOut)
+	}
+	if !strings.Contains(humanOut, "[TOOL: exec_command]") || !strings.Contains(humanOut, "$ ls -la") {
+		t.Errorf("expected exec_command in Codex human mode: %s", humanOut)
+	}
+	if !strings.Contains(humanOut, "[ASSISTANT]") || !strings.Contains(humanOut, "I inspected the directory.") {
+		t.Errorf("expected ASSISTANT in Codex human mode: %s", humanOut)
+	}
+
+	// 2. Agent mode
+	var agentBuf bytes.Buffer
+	if err := PrintCodexSession(&agentBuf, logPath, PrintOptions{AgentMode: true}); err != nil {
+		t.Fatalf("unexpected error on PrintCodexSession agent mode: %v", err)
+	}
+	agentOut := agentBuf.String()
+	if !strings.Contains(agentOut, "USER:\nfix bug in main.go") {
+		t.Errorf("expected USER in Codex agent mode: %s", agentOut)
+	}
+	if !strings.Contains(agentOut, "TOOL exec_command:") || !strings.Contains(agentOut, "$ ls -la") {
+		t.Errorf("expected TOOL exec_command in Codex agent mode: %s", agentOut)
+	}
+	if !strings.Contains(agentOut, "ASSISTANT:\nI inspected the directory.") {
+		t.Errorf("expected ASSISTANT in Codex agent mode: %s", agentOut)
+	}
+
+	// 3. JSON mode
+	var jsonBuf bytes.Buffer
+	if err := PrintCodexSession(&jsonBuf, logPath, PrintOptions{JSON: true}); err != nil {
+		t.Fatalf("unexpected error on PrintCodexSession json mode: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(jsonBuf.String()), "[") {
+		t.Errorf("expected JSON array output, got: %s", jsonBuf.String())
+	}
+
+	// 4. Summary mode
+	var sumBuf bytes.Buffer
+	if err := PrintCodexSession(&sumBuf, logPath, PrintOptions{SummaryOnly: true}); err != nil {
+		t.Fatalf("unexpected error on PrintCodexSession summary mode: %v", err)
+	}
+	if !strings.Contains(sumBuf.String(), "[SESSION SUMMARY]") {
+		t.Errorf("expected summary header, got: %s", sumBuf.String())
+	}
+
+	// 5. Handoff mode
+	var handoffBuf bytes.Buffer
+	if err := PrintCodexSession(&handoffBuf, logPath, PrintOptions{Handoff: true}); err != nil {
+		t.Fatalf("unexpected error on PrintCodexSession handoff mode: %v", err)
+	}
+	if !strings.Contains(handoffBuf.String(), "[SESSION HANDOFF") {
+		t.Errorf("expected handoff header, got: %s", handoffBuf.String())
+	}
+
+	// 6. File not found
+	var notFoundBuf bytes.Buffer
+	if err := PrintCodexSession(&notFoundBuf, "/non/existent/codex.jsonl", PrintOptions{}); err == nil {
 		t.Fatal("expected error on non-existent file, got nil")
 	}
 }

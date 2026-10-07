@@ -2,8 +2,8 @@
 
 # What It Does
 
-- **Automatic transcript discovery**: Locates session files by exact path, full session ID, or prefix across standard storage locations (`~/.claude/projects`, `~/.claude/sessions`, `~/.pi/agent/sessions`, and `$XDG_DATA_HOME`).
-- **Subject-first CLI commands**: Provides consistent subcommands across supported harnesses (`agent-print-session claude`, `agent-print-session pi`).
+- **Automatic transcript discovery**: Locates session files by exact path, full session ID, or prefix across standard storage locations (`~/.claude/projects`, `~/.claude/sessions`, `~/.pi/agent/sessions`, `~/.codex/sessions`, and `$XDG_DATA_HOME`).
+- **Subject-first CLI commands**: Provides consistent subcommands across supported harnesses (`agent-print-session claude`, `agent-print-session codex`, `agent-print-session pi`).
 - **Granular event filtering**: Focuses output on errors (`--errors`), file edits (`--files`), tool executions (`--tools`), prompts (`--prompts`), or the most recent turn (`--last-turn`).
 - **Work resumption & handoff**: Extracts initial goals, active branches, modified files, recent errors, and next steps via `handoff` (or aliases `continue`, `resume`).
 - **High-level summaries**: Aggregates token usage, session duration, and tool execution tallies via `summary`.
@@ -89,7 +89,7 @@ agent-print-session pi print --json --last-turn 4d3f21
 | `--help` | `-h` | `false` | Display help screen and command hierarchy |
 | `--version` | `-v` | `false` | Display version information |
 
-### `agent-print-session [claude|pi] print` Flags
+### `agent-print-session [claude|codex|pi] print` Flags
 
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
@@ -111,6 +111,7 @@ agent-print-session pi print --json --last-turn 4d3f21
 | Harness | Subcommand | Default Search Paths |
 | :--- | :--- | :--- |
 | **Claude Code** | `agent-print-session claude` | `~/.claude/projects/`, `~/.claude/sessions/` |
+| **OpenAI Codex** | `agent-print-session codex` | `~/.codex/sessions/` |
 | **Pi Coding Agent** | `agent-print-session pi` | `~/.pi/agent/sessions/` |
 
 # License

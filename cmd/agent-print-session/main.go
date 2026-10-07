@@ -235,13 +235,109 @@ func newRootCmd() *cobra.Command {
 	piCmd.AddCommand(piHandoffCmd)
 	rootCmd.AddCommand(piCmd)
 
+	// Subject: codex
+	codexCmd := &cobra.Command{
+		Use:   "codex",
+		Short: "Inspect and print OpenAI Codex session transcripts",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				flags := getPrintFlags(cmd)
+				return runPrintCodex(cmd, args[0], flags)
+			}
+			return cmd.Help()
+		},
+	}
+
+	// Verb: codex print <session-id>
+	var codexPrintFlags printFlags
+	codexPrintCmd := &cobra.Command{
+		Use:   "print <session-id-or-path>",
+		Short: "Parse and print Codex session events by ID or file path",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if codexPrintFlags.filePath != "" {
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := codexPrintFlags.filePath
+			if target == "" && len(args) > 0 {
+				target = args[0]
+			}
+			return runPrintCodex(cmd, target, codexPrintFlags)
+		},
+	}
+	setupFlags(codexPrintCmd, &codexPrintFlags)
+	setupFlags(codexCmd, &codexPrintFlags)
+
+	// Verb: codex summary <session-id>
+	var codexSumFlags printFlags
+	codexSummaryCmd := &cobra.Command{
+		Use:   "summary <session-id-or-path>",
+		Short: "Print a high-level token-efficient summary of a Codex session",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if codexSumFlags.filePath != "" {
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := codexSumFlags.filePath
+			if target == "" && len(args) > 0 {
+				target = args[0]
+			}
+			codexSumFlags.summaryOnly = true
+			return runPrintCodex(cmd, target, codexSumFlags)
+		},
+	}
+	codexSummaryCmd.Flags().BoolVar(&codexSumFlags.jsonOut, "json", false, "Output summary as formatted JSON")
+	codexSummaryCmd.Flags().StringVar(&codexSumFlags.filePath, "path", "", "Direct path to Codex session .jsonl file")
+
+	// Verb: codex handoff <session-id> (aliases: continue, resume)
+	var codexHandoffFlags printFlags
+	codexHandoffCmd := &cobra.Command{
+		Use:     "handoff <session-id-or-path>",
+		Aliases: []string{"continue", "resume"},
+		Short:   "Generate structured continuation context for resuming work started in another Codex session",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if codexHandoffFlags.filePath != "" {
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := codexHandoffFlags.filePath
+			if target == "" && len(args) > 0 {
+				target = args[0]
+			}
+			codexHandoffFlags.handoff = true
+			return runPrintCodex(cmd, target, codexHandoffFlags)
+		},
+	}
+	codexHandoffCmd.Flags().BoolVar(&codexHandoffFlags.jsonOut, "json", false, "Output handoff context as formatted JSON")
+	codexHandoffCmd.Flags().StringVar(&codexHandoffFlags.filePath, "path", "", "Direct path to Codex session .jsonl file")
+
+	codexCmd.AddCommand(codexPrintCmd)
+	codexCmd.AddCommand(codexSummaryCmd)
+	codexCmd.AddCommand(codexHandoffCmd)
+	rootCmd.AddCommand(codexCmd)
+
 	cobrahelptree.Setup(rootCmd)
 	return rootCmd
 }
 
 func setupFlags(cmd *cobra.Command, flags *printFlags) {
 	cmd.Flags().BoolVar(&flags.jsonOut, "json", false, "Output parsed events as formatted JSON")
-	cmd.Flags().StringVar(&flags.filePath, "path", "", "Direct path to Claude session .jsonl file")
+	cmd.Flags().StringVar(&flags.filePath, "path", "", "Direct path to session .jsonl file")
 	cmd.Flags().BoolVar(&flags.summaryOnly, "summary", false, "Output high-level session summary only")
 	cmd.Flags().BoolVar(&flags.handoff, "handoff", false, "Output continuation/handoff context for resuming work")
 	cmd.Flags().BoolVar(&flags.lastTurn, "last-turn", false, "Output only the final conversational turn")
@@ -334,6 +430,32 @@ func runPrintPi(cmd *cobra.Command, target string, flags printFlags) error {
 	}
 
 	return session.PrintPiSession(cmd.OutOrStdout(), resolvedPath, opts)
+}
+
+func runPrintCodex(cmd *cobra.Command, target string, flags printFlags) error {
+	resolvedPath, err := session.FindCodexSession(target)
+	if err != nil {
+		return err
+	}
+
+	isAgent := os.Getenv("AGENT") == "1" || os.Getenv("AGENT") == "true" || os.Getenv("AGENT") == "yes"
+
+	opts := session.PrintOptions{
+		JSON:        flags.jsonOut,
+		AgentMode:   isAgent,
+		SummaryOnly: flags.summaryOnly,
+		Handoff:     flags.handoff,
+		LastTurn:    flags.lastTurn,
+		ErrorsOnly:  flags.errorsOnly,
+		FilesOnly:   flags.filesOnly,
+		ToolsOnly:   flags.toolsOnly,
+		PromptsOnly: flags.promptsOnly,
+		Tail:        flags.tail,
+		Limit:       flags.limit,
+		All:         flags.all,
+	}
+
+	return session.PrintCodexSession(cmd.OutOrStdout(), resolvedPath, opts)
 }
 
 func run(args []string) error {

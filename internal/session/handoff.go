@@ -186,7 +186,7 @@ func ComputeHandoffContext(filePath string, events []parser.ParsedEvent, recentL
 				})
 			}
 
-		case "turn_end":
+		case "turn_end", "agent_message":
 			if ev.Data.Content != nil && *ev.Data.Content != "" {
 				text := strings.TrimSpace(*ev.Data.Content)
 				if text != "" {
@@ -369,7 +369,7 @@ func RenderHandoff(w io.Writer, h HandoffContext, agentMode bool, jsonOut bool) 
 			_, _ = fmt.Fprintf(w, "  [TOOL: %s]\n", act.ToolName)
 			if act.Summary != "" {
 				summaryPrefix := ""
-				if act.ToolName == "Bash" {
+				if act.ToolName == "Bash" || act.ToolName == "bash" || act.ToolName == "exec_command" {
 					summaryPrefix = "$ "
 				}
 				wrappedDetail := WrapTextWithIndent(summaryPrefix+act.Summary, "      ", termWidth)

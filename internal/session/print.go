@@ -45,6 +45,15 @@ func PrintPiSession(w io.Writer, filePath string, opts PrintOptions) error {
 	})
 }
 
+// PrintCodexSession reads and parses an OpenAI Codex session transcript file using agent-parser,
+// rendering output like a harness display.
+func PrintCodexSession(w io.Writer, filePath string, opts PrintOptions) error {
+	p := parser.NewCodexParser()
+	return printSessionWithParser(w, filePath, opts, func(line []byte) ([]parser.ParsedEvent, error) {
+		return p.ParseLine(line)
+	})
+}
+
 func printSessionWithParser(w io.Writer, filePath string, opts PrintOptions, parseFn func([]byte) ([]parser.ParsedEvent, error)) error {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -150,7 +159,7 @@ func filterEvents(events []parser.ParsedEvent, opts PrintOptions) []parser.Parse
 			continue
 		}
 		if opts.PromptsOnly {
-			if ev.EventType == "turn_start" || (ev.EventType == "turn_end" && ev.Data.Content != nil && *ev.Data.Content != "") {
+			if ev.EventType == "turn_start" || ((ev.EventType == "turn_end" || ev.EventType == "agent_message") && ev.Data.Content != nil && *ev.Data.Content != "") {
 				filtered = append(filtered, ev)
 			}
 			continue
@@ -207,7 +216,7 @@ func renderAgentMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 				_, _ = fmt.Fprintf(w, "\nUSER:\n%s\n", prompt)
 			}
 
-		case "turn_end":
+		case "turn_end", "agent_message":
 			if ev.Data.Content != nil && *ev.Data.Content != "" {
 				text := strings.TrimSpace(*ev.Data.Content)
 				if text != "" {
@@ -221,7 +230,7 @@ func renderAgentMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 				toolName = *ev.Data.ToolName
 			}
 			_, _ = fmt.Fprintf(w, "\nTOOL %s:\n", toolName)
-			if toolName == "Bash" && ev.Data.ToolInput != nil {
+			if (toolName == "Bash" || toolName == "bash" || toolName == "exec_command") && ev.Data.ToolInput != nil {
 				if cmd, ok := ev.Data.ToolInput["command"].(string); ok {
 					_, _ = fmt.Fprintf(w, "$ %s\n", cmd)
 				}
@@ -312,7 +321,7 @@ func renderHumanMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 				_, _ = fmt.Fprintf(w, "[USER]\n%s\n\n", wrapped)
 			}
 
-		case "turn_end":
+		case "turn_end", "agent_message":
 			if ev.Data.Content != nil && *ev.Data.Content != "" {
 				text := strings.TrimSpace(*ev.Data.Content)
 				if text != "" {
@@ -327,7 +336,7 @@ func renderHumanMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 				toolName = *ev.Data.ToolName
 			}
 			_, _ = fmt.Fprintf(w, "[TOOL: %s]\n", toolName)
-			if toolName == "Bash" && ev.Data.ToolInput != nil {
+			if (toolName == "Bash" || toolName == "bash" || toolName == "exec_command") && ev.Data.ToolInput != nil {
 				if cmd, ok := ev.Data.ToolInput["command"].(string); ok {
 					wrapped := WrapTextWithIndent("$ "+cmd, "    ", termWidth)
 					_, _ = fmt.Fprintf(w, "%s\n", wrapped)

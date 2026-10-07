@@ -40,6 +40,9 @@ func TestCLI_Help(t *testing.T) {
 	if !strings.Contains(helpText, "claude") {
 		t.Errorf("expected 'claude' in help tree, got: %s", helpText)
 	}
+	if !strings.Contains(helpText, "codex") {
+		t.Errorf("expected 'codex' in help tree, got: %s", helpText)
+	}
 }
 
 func TestCLI_ClaudeHelp(t *testing.T) {
@@ -484,5 +487,157 @@ func TestCLI_PiCommands(t *testing.T) {
 	cmdNotFound.SetArgs([]string{"pi", "print", "non-existent-pi-id"})
 	if err := cmdNotFound.Execute(); err == nil {
 		t.Fatal("expected error on non-existent pi session, got nil")
+	}
+}
+
+const sampleCodexLog = `{"type":"session_meta","timestamp":"2026-06-12T16:08:36.123Z","payload":{"id":"codex-cli-test","timestamp":"2026-06-12T16:08:36.123Z","cwd":"/repo","originator":"codex-tui","cli_version":"0.121.0","source":"cli","model_provider":"openai","git":{"commit_hash":"abcdef123","branch":"main","repository_url":"git@github.com:org/repo.git"}}}
+{"type":"turn_context","timestamp":"2026-06-12T16:08:37.000Z","payload":{"turn_id":"turn-1","cwd":"/repo","model":"o3-mini"}}
+{"type":"event_msg","timestamp":"2026-06-12T16:08:38.000Z","payload":{"type":"user_message","message":"implement codex support"}}
+{"type":"event_msg","timestamp":"2026-06-12T16:08:41.000Z","payload":{"type":"agent_message","message":"Codex support implemented"}}
+`
+
+func setupSampleCodexLog(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	p := filepath.Join(tmpDir, "rollout-2026-06-12T16-08-36-codex-cli-test.jsonl")
+	if err := os.WriteFile(p, []byte(sampleCodexLog), 0o644); err != nil {
+		t.Fatalf("failed to write codex test file: %v", err)
+	}
+	return p
+}
+
+func TestCLI_CodexCommands(t *testing.T) {
+	codexPath := setupSampleCodexLog(t)
+
+	// 1. Codex help
+	cmdHelp := newRootCmd()
+	var outHelp bytes.Buffer
+	cmdHelp.SetOut(&outHelp)
+	cmdHelp.SetArgs([]string{"codex", "--help"})
+	if err := cmdHelp.Execute(); err != nil {
+		t.Fatalf("expected nil error on codex --help: %v", err)
+	}
+
+	// 2. Codex no args (help)
+	cmdNoArgs := newRootCmd()
+	var outNoArgs bytes.Buffer
+	cmdNoArgs.SetOut(&outNoArgs)
+	cmdNoArgs.SetArgs([]string{"codex"})
+	if err := cmdNoArgs.Execute(); err != nil {
+		t.Fatalf("expected nil error on codex no args: %v", err)
+	}
+
+	// 3. Codex shorthand invocation: codex <path>
+	cmdShort := newRootCmd()
+	var outShort bytes.Buffer
+	cmdShort.SetOut(&outShort)
+	cmdShort.SetArgs([]string{"codex", codexPath})
+	if err := cmdShort.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex shorthand: %v", err)
+	}
+	if !strings.Contains(outShort.String(), "implement codex support") {
+		t.Errorf("expected prompt in codex shorthand output: %s", outShort.String())
+	}
+
+	// 4. Codex print command: codex print <path>
+	cmdPrint := newRootCmd()
+	var outPrint bytes.Buffer
+	cmdPrint.SetOut(&outPrint)
+	cmdPrint.SetArgs([]string{"codex", "print", codexPath})
+	if err := cmdPrint.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex print: %v", err)
+	}
+	if !strings.Contains(outPrint.String(), "Codex support implemented") {
+		t.Errorf("expected assistant text in codex print output: %s", outPrint.String())
+	}
+
+	// 5. Codex summary: codex summary <path>
+	cmdSum := newRootCmd()
+	var outSum bytes.Buffer
+	cmdSum.SetOut(&outSum)
+	cmdSum.SetArgs([]string{"codex", "summary", codexPath})
+	if err := cmdSum.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex summary: %v", err)
+	}
+	if !strings.Contains(outSum.String(), "SESSION_SUMMARY") && !strings.Contains(outSum.String(), "[SESSION SUMMARY]") {
+		t.Errorf("expected summary header, got: %s", outSum.String())
+	}
+
+	// 5b. Codex summary with --json and --path
+	cmdSumJSON := newRootCmd()
+	var outSumJSON bytes.Buffer
+	cmdSumJSON.SetOut(&outSumJSON)
+	cmdSumJSON.SetArgs([]string{"codex", "summary", "--json", "--path", codexPath})
+	if err := cmdSumJSON.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex summary --json --path: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(outSumJSON.String()), "{") {
+		t.Errorf("expected JSON object from summary, got: %s", outSumJSON.String())
+	}
+
+	// 6. Codex handoff: codex handoff <path>
+	cmdHandoff := newRootCmd()
+	var outHandoff bytes.Buffer
+	cmdHandoff.SetOut(&outHandoff)
+	cmdHandoff.SetArgs([]string{"codex", "handoff", codexPath})
+	if err := cmdHandoff.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex handoff: %v", err)
+	}
+	if !strings.Contains(outHandoff.String(), "CONTINUATION_CONTEXT") && !strings.Contains(outHandoff.String(), "HANDOFF") {
+		t.Errorf("expected handoff header, got: %s", outHandoff.String())
+	}
+
+	// 6b. Codex handoff with --json and --path
+	cmdHandoffJSON := newRootCmd()
+	var outHandoffJSON bytes.Buffer
+	cmdHandoffJSON.SetOut(&outHandoffJSON)
+	cmdHandoffJSON.SetArgs([]string{"codex", "handoff", "--json", "--path", codexPath})
+	if err := cmdHandoffJSON.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex handoff --json --path: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(outHandoffJSON.String()), "{") {
+		t.Errorf("expected JSON object from handoff, got: %s", outHandoffJSON.String())
+	}
+
+	// 6c. Codex print with --path and AGENT=1
+	t.Setenv("AGENT", "1")
+	cmdAgent := newRootCmd()
+	var outAgent bytes.Buffer
+	cmdAgent.SetOut(&outAgent)
+	cmdAgent.SetArgs([]string{"codex", "print", "--path", codexPath})
+	if err := cmdAgent.Execute(); err != nil {
+		t.Fatalf("unexpected error on codex print agent mode: %v", err)
+	}
+	if !strings.Contains(outAgent.String(), "SESSION:") {
+		t.Errorf("expected SESSION header in agent mode, got: %s", outAgent.String())
+	}
+	t.Setenv("AGENT", "")
+
+	// 7. Codex missing args on print
+	cmdMissing := newRootCmd()
+	cmdMissing.SetArgs([]string{"codex", "print"})
+	if err := cmdMissing.Execute(); err == nil {
+		t.Fatal("expected error on codex print without args, got nil")
+	}
+
+	// 8. Codex missing args on summary
+	cmdSumMissing := newRootCmd()
+	cmdSumMissing.SetArgs([]string{"codex", "summary"})
+	if err := cmdSumMissing.Execute(); err == nil {
+		t.Fatal("expected error on codex summary without args, got nil")
+	}
+
+	// 9. Codex missing args on handoff
+	cmdHandMissing := newRootCmd()
+	cmdHandMissing.SetArgs([]string{"codex", "handoff"})
+	if err := cmdHandMissing.Execute(); err == nil {
+		t.Fatal("expected error on codex handoff without args, got nil")
+	}
+
+	// 10. Codex not found
+	cmdNotFound := newRootCmd()
+	cmdNotFound.SetArgs([]string{"codex", "print", "non-existent-codex-id"})
+	if err := cmdNotFound.Execute(); err == nil {
+		t.Fatal("expected error on non-existent codex session, got nil")
 	}
 }

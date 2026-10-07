@@ -34,7 +34,10 @@ func TestComputeHandoffContext_FullFlow(t *testing.T) {
 			EventType: "turn_start",
 			Timestamp: 2000,
 			Data: parser.EventData{
-				Content: func() *string { v := "<local-command-caveat>Ignore</local-command-caveat>Initial goal: migrate to JWT"; return &v }(),
+				Content: func() *string {
+					v := "<local-command-caveat>Ignore</local-command-caveat>Initial goal: migrate to JWT"
+					return &v
+				}(),
 			},
 		},
 		{
@@ -92,7 +95,10 @@ func TestComputeHandoffContext_FullFlow(t *testing.T) {
 			EventType: "turn_end",
 			Timestamp: 5500,
 			Data: parser.EventData{
-				Content: func() *string { v := "I have migrated the JWT handler, but TestTokenExpiry is failing due to clock skew."; return &v }(),
+				Content: func() *string {
+					v := "I have migrated the JWT handler, but TestTokenExpiry is failing due to clock skew."
+					return &v
+				}(),
 			},
 		},
 		{
@@ -210,5 +216,38 @@ func TestRenderHandoff_Formats(t *testing.T) {
 	}
 	if !strings.Contains(agentOut, "RECENT_ERRORS: none") {
 		t.Errorf("expected RECENT_ERRORS: none, got: %s", agentOut)
+	}
+}
+
+func TestComputeHandoffContext_AgentMessage(t *testing.T) {
+	evs := []parser.ParsedEvent{
+		{
+			EventType: "run_started",
+			Timestamp: 1000,
+			CWD:       "/test/cwd",
+			GitBranch: "main",
+			Data: parser.EventData{
+				Title: func() *string { v := "Codex Session"; return &v }(),
+			},
+		},
+		{
+			EventType: "turn_start",
+			Timestamp: 2000,
+			Data: parser.EventData{
+				Content: func() *string { v := "Initial objective"; return &v }(),
+			},
+		},
+		{
+			EventType: "agent_message",
+			Timestamp: 3000,
+			Data: parser.EventData{
+				Content: func() *string { v := "Work completed successfully"; return &v }(),
+			},
+		},
+	}
+
+	h := ComputeHandoffContext("/path/to/codex.jsonl", evs, 5)
+	if h.FinalAssistantMessage != "Work completed successfully" {
+		t.Errorf("FinalAssistantMessage = %q, want 'Work completed successfully'", h.FinalAssistantMessage)
 	}
 }
