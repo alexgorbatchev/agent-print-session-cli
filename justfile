@@ -12,11 +12,11 @@ build:
 
 # Run the CLI in human mode, e.g. `just run --help`
 run *args:
-    go run ./cmd/agent-print-session {{args}}
+    go run ./cmd/agent-print-session {{ args }}
 
 # Run the CLI in agent mode, e.g. `just run-ai --help`
 run-ai *args:
-    AGENT=1 go run ./cmd/agent-print-session {{args}}
+    AGENT=1 go run ./cmd/agent-print-session {{ args }}
 
 # Run all unit tests with race detector
 test:
@@ -28,10 +28,10 @@ coverage:
     set -euo pipefail
     go test -race -coverpkg=./... -coverprofile=coverage.out ./...
     total="$(go tool cover -func=coverage.out | awk '/^total:/ { print substr($3, 1, length($3) - 1) }')"
-    if awk "BEGIN { exit ({{min_coverage}} <= ${total}) ? 0 : 1 }"; then
-        echo "statement coverage ${total}% meets the {{min_coverage}}% floor"
+    if awk "BEGIN { exit ({{ min_coverage }} <= ${total}) ? 0 : 1 }"; then
+        echo "statement coverage ${total}% meets the {{ min_coverage }}% floor"
     else
-        echo "statement coverage ${total}% is below the {{min_coverage}}% floor" >&2
+        echo "statement coverage ${total}% is below the {{ min_coverage }}% floor" >&2
         exit 1
     fi
 
@@ -49,3 +49,7 @@ lint:
 check:
     just lint
     just coverage
+
+# Download project dependencies for local development
+setup:
+    go mod download
