@@ -67,7 +67,7 @@ fn command_tree_native_help_version_completion_and_skill_contracts() {
                     .contains(shell)
             );
         }
-        assert_eq!(run(&["skill"], mode).unwrap(), cli::SKILL_POINTER);
+        assert_eq!(run(&["skill"], mode).unwrap(), INSTALL_TEXT);
         assert_eq!(
             run(&["--version"], mode).unwrap(),
             concat!(env!("CARGO_PKG_VERSION"), "\n")
@@ -221,3 +221,5 @@ fn real_binary_discovers_env_paths_folds_home_and_reports_runtime_error_once() {
         .unwrap();
     assert!(output.status.success());
 }
+
+const INSTALL_TEXT: &str = "Install the agent-print-session skill using the Skills CLI:\n\n  npx skills add alexgorbatchev/agent-print-session-cli --skill agent-print-session\n\nSkill:\n\n  https://github.com/alexgorbatchev/agent-print-session-cli/tree/main/skills/agent-print-session\n";

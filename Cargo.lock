@@ -198,14 +198,12 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "cli-command-kit"
-version = "0.1.0"
-source = "git+https://github.com/alexgorbatchev/cli-command-kit-rust.git?rev=40210e689762f6606776764bb3696e2685198c2e#40210e689762f6606776764bb3696e2685198c2e"
+version = "0.3.0"
+source = "git+https://github.com/alexgorbatchev/cli-command-kit-rust.git?rev=dead4a60e08c7a84bc77ef329b220bfecd57627b#dead4a60e08c7a84bc77ef329b220bfecd57627b"
 dependencies = [
  "clap",
  "dirs",
  "terminal_size",
- "textwrap",
- "unicode-segmentation",
  "unicode-width",
 ]
 
@@ -902,12 +900,6 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "unicode-width"

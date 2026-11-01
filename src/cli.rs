@@ -13,10 +13,12 @@ use std::{
     path::Path,
 };
 
-pub const SKILL_POINTER: &str = "Install the agent-print-session skill using the Skills CLI:\n\n  npx skills add alexgorbatchev/agent-print-session-cli --skill agent-print-session\n\nSkill:\n\n  https://github.com/alexgorbatchev/agent-print-session-cli/tree/main/skills/agent-print-session\n";
 pub fn help_options() -> HelpOptions {
     HelpOptions {
-        skill: Some(SKILL_POINTER.into()),
+        skill: Some(
+            cli_command_kit::SkillSource::new("alexgorbatchev/agent-print-session-cli", "main")
+                .expect("the fixed skill source names a GitHub repository"),
+        ),
         ..Default::default()
     }
 }
@@ -164,7 +166,7 @@ pub fn run(
         writeln!(out, "{}", env!("CARGO_PKG_VERSION"))?;
         return Ok(());
     }
-    if cli_command_kit::write_skill(&matches, &help_options(), &mut out)? {
+    if cli_command_kit::write_skill(&command, &matches, &help_options(), &mut out)? {
         return Ok(());
     }
     let Some((name, harness_matches)) = matches.subcommand() else {
