@@ -4,13 +4,15 @@ go 1.26.2
 
 require (
 	github.com/alexgorbatchev/agent-parser v1.0.0
-	github.com/alexgorbatchev/cobra-help-tree v1.1.0
+	github.com/alexgorbatchev/cobra-help-tree/v4 v4.0.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.46.0
 )
 
 require (
+	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/ncruces/go-sqlite3 v0.35.5 // indirect
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.2.35304 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect

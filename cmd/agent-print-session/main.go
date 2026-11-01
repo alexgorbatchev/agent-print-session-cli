@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/alexgorbatchev/agent-print-session-cli/internal/session"
-	cobrahelptree "github.com/alexgorbatchev/cobra-help-tree"
+	cobrahelptree "github.com/alexgorbatchev/cobra-help-tree/v4"
 	"github.com/spf13/cobra"
 )
 
@@ -331,7 +331,9 @@ func newRootCmd() *cobra.Command {
 	codexCmd.AddCommand(codexHandoffCmd)
 	rootCmd.AddCommand(codexCmd)
 
-	cobrahelptree.Setup(rootCmd)
+	if err := cobrahelptree.Setup(rootCmd); err != nil {
+		panic(err) // A non-nil root is a programmer invariant.
+	}
 	return rootCmd
 }
 
