@@ -124,7 +124,7 @@ func TestComputeSessionSummary_RichEvents(t *testing.T) {
 	if s.CostUSD != 0.05 {
 		t.Errorf("CostUSD = %f", s.CostUSD)
 	}
-	if len(s.Tools) != 1 || s.Tools[0].Name != "Edit" || s.Tools[0].Calls != 2 {
+	if len(s.Tools) != 1 || s.Tools[0].Name != "Edit" || s.Tools[0].Calls != 2 || s.Tools[0].ErrorCalls != 1 {
 		t.Errorf("Tools = %+v", s.Tools)
 	}
 	if len(s.FilesModified) != 1 || s.FilesModified[0].Hunks != 3 {
@@ -225,5 +225,45 @@ func TestFormatDuration(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("formatDuration(%d) = %q, want %q", tt.ms, got, tt.want)
 		}
+	}
+}
+
+func TestComputeSessionSummary_AttributesToolErrorsByCallID(t *testing.T) {
+	str := func(v string) *string { return &v }
+	isErr := func(v bool) *bool { return &v }
+	call := func(name, id string) parser.ParsedEvent {
+		return parser.ParsedEvent{EventType: "tool_call", Data: parser.EventData{ToolName: str(name), ToolCallID: str(id)}}
+	}
+	result := func(id string, failed bool) parser.ParsedEvent {
+		return parser.ParsedEvent{EventType: "tool_result", Data: parser.EventData{ToolCallID: str(id), IsError: isErr(failed)}}
+	}
+	evs := []parser.ParsedEvent{
+		call("Bash", "b1"), call("Bash", "b2"), call("Bash", "b3"), call("Read", "r1"),
+		result("b1", true), result("b2", true), result("b3", false), result("r1", false),
+		result("orphan", true),
+	}
+
+	s := ComputeSessionSummary("/test/session.jsonl", evs)
+
+	got := map[string]ToolUsageStat{}
+	for _, tool := range s.Tools {
+		got[tool.Name] = tool
+	}
+	if got["Bash"].Calls != 3 || got["Bash"].ErrorCalls != 2 {
+		t.Errorf("Bash = %+v, want 3 calls with 2 errors", got["Bash"])
+	}
+	if got["Read"].Calls != 1 || got["Read"].ErrorCalls != 0 {
+		t.Errorf("Read = %+v, want 1 call with 0 errors", got["Read"])
+	}
+	if len(s.Errors) != 3 {
+		t.Errorf("Errors = %+v, want 3 including the unmatched result", s.Errors)
+	}
+
+	var agentOut strings.Builder
+	if err := RenderSummary(&agentOut, s, true, false); err != nil {
+		t.Fatalf("RenderSummary: %v", err)
+	}
+	if !strings.Contains(agentOut.String(), "Bash(3,err:2)") {
+		t.Errorf("agent summary missing per-tool error count:\n%s", agentOut.String())
 	}
 }

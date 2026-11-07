@@ -64,6 +64,7 @@ func ComputeSessionSummary(filePath string, events []parser.ParsedEvent) Session
 	modelSet := make(map[string]struct{})
 	toolsMap := make(map[string]*ToolUsageStat)
 	filesMap := make(map[string]*FileModificationStat)
+	toolByCallID := make(map[string]*ToolUsageStat)
 
 	var firstTS, lastTS int64
 
@@ -104,6 +105,9 @@ func ComputeSessionSummary(filePath string, events []parser.ParsedEvent) Session
 				toolsMap[tName] = st
 			}
 			st.Calls++
+			if ev.Data.ToolCallID != nil && *ev.Data.ToolCallID != "" {
+				toolByCallID[*ev.Data.ToolCallID] = st
+			}
 
 			if fm := ev.Data.FileModification; fm != nil {
 				key := fm.FilePath + ":" + fm.Action
@@ -125,6 +129,9 @@ func ComputeSessionSummary(filePath string, events []parser.ParsedEvent) Session
 				callID := ""
 				if ev.Data.ToolCallID != nil {
 					callID = *ev.Data.ToolCallID
+				}
+				if st, ok := toolByCallID[callID]; ok {
+					st.ErrorCalls++
 				}
 				msg := ""
 				if ev.Data.ToolOutput != nil {
