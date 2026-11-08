@@ -159,7 +159,7 @@ func filterEvents(events []parser.ParsedEvent, opts PrintOptions) []parser.Parse
 			continue
 		}
 		if opts.PromptsOnly {
-			if ev.EventType == "turn_start" || ((ev.EventType == "turn_end" || ev.EventType == "agent_message") && ev.Data.Content != nil && *ev.Data.Content != "") {
+			if ev.EventType == "turn_start" || ev.EventType == "message_absorbed" || ((ev.EventType == "turn_end" || ev.EventType == "agent_message") && ev.Data.Content != nil && *ev.Data.Content != "") {
 				filtered = append(filtered, ev)
 			}
 			continue
@@ -210,10 +210,10 @@ func renderAgentMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 
 	for _, ev := range events {
 		switch ev.EventType {
-		case "turn_start":
+		case "turn_start", "message_absorbed":
 			prompt := extractPromptText(ev)
 			if prompt != "" {
-				_, _ = fmt.Fprintf(w, "\nUSER:\n%s\n", prompt)
+				_, _ = fmt.Fprintf(w, "\n%s:\n%s\n", promptLabel(ev), prompt)
 			}
 
 		case "turn_end", "agent_message":
@@ -314,11 +314,11 @@ func renderHumanMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 
 	for _, ev := range events {
 		switch ev.EventType {
-		case "turn_start":
+		case "turn_start", "message_absorbed":
 			prompt := extractPromptText(ev)
 			if prompt != "" {
 				wrapped := WrapTextWithIndent(prompt, "    ", termWidth)
-				_, _ = fmt.Fprintf(w, "[USER]\n%s\n\n", wrapped)
+				_, _ = fmt.Fprintf(w, "[%s]\n%s\n\n", promptLabel(ev), wrapped)
 			}
 
 		case "turn_end", "agent_message":
@@ -423,6 +423,14 @@ func extractSessionMeta(events []parser.ParsedEvent) (title, branch, cwd string)
 		}
 	}
 	return title, branch, cwd
+}
+
+// promptLabel names who sent a prompt: the user, or another agent.
+func promptLabel(ev parser.ParsedEvent) string {
+	if ev.Data.Role != nil && *ev.Data.Role == "agent" {
+		return "AGENT"
+	}
+	return "USER"
 }
 
 func extractPromptText(ev parser.ParsedEvent) string {

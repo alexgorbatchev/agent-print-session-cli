@@ -523,3 +523,36 @@ func TestPrintCodexSession_Cases(t *testing.T) {
 		t.Fatal("expected error on non-existent file, got nil")
 	}
 }
+
+const sampleCodexMidTurnLog = `{"type":"session_meta","timestamp":"2026-11-07T10:00:00Z","payload":{"id":"t","cwd":"/work","source":"cli"}}
+{"type":"event_msg","timestamp":"2026-11-07T10:00:01Z","payload":{"type":"task_started","turn_id":"u1","started_at":1794045601}}
+{"type":"response_item","timestamp":"2026-11-07T10:00:01Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Rename a.go"}]}}
+{"type":"response_item","timestamp":"2026-11-07T10:00:03Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Actually call it c.go"}]}}
+{"type":"response_item","timestamp":"2026-11-07T10:00:04Z","payload":{"type":"agent_message","author":"/root/helper","recipient":"/root","content":[{"type":"input_text","text":"Helper finished."}]}}
+{"type":"event_msg","timestamp":"2026-11-07T10:00:06Z","payload":{"type":"task_complete","turn_id":"u1","completed_at":1794045606}}
+`
+
+func TestPrintCodexSession_MidTurnPrompts(t *testing.T) {
+	logPath := createTestLogFile(t, sampleCodexMidTurnLog)
+	for _, tt := range []struct {
+		name string
+		opts PrintOptions
+		want []string
+	}{
+		{"human", PrintOptions{}, []string{"[USER]", "Rename a.go", "Actually call it c.go", "[AGENT]", "Helper finished."}},
+		{"agent", PrintOptions{AgentMode: true}, []string{"USER:\nRename a.go", "USER:\nActually call it c.go", "AGENT:\nHelper finished."}},
+		{"prompts only", PrintOptions{AgentMode: true, PromptsOnly: true}, []string{"USER:\nActually call it c.go", "AGENT:\nHelper finished."}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := PrintCodexSession(&buf, logPath, tt.opts); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(buf.String(), want) {
+					t.Errorf("output misses %q:\n%s", want, buf.String())
+				}
+			}
+		})
+	}
+}

@@ -111,6 +111,15 @@ func ComputeHandoffContext(filePath string, events []parser.ParsedEvent, recentL
 				h.LatestUserPrompt = cleaned
 			}
 
+		case "message_absorbed":
+			// A prompt the user sent while a turn was running replaces the
+			// latest instruction; input from other agents does not.
+			if ev.Data.Role != nil && *ev.Data.Role == "user" {
+				if prompt := extractPromptText(ev); prompt != "" {
+					h.LatestUserPrompt = prompt
+				}
+			}
+
 		case "tool_call":
 			tName := "unknown"
 			if ev.Data.ToolName != nil && *ev.Data.ToolName != "" {
@@ -279,7 +288,7 @@ func RenderHandoff(w io.Writer, h HandoffContext, agentMode bool, jsonOut bool) 
 		if len(h.FilesModified) > 0 {
 			_, _ = fmt.Fprintf(w, "\nFILES_MODIFIED (%d):\n", len(h.FilesModified))
 			for _, fm := range h.FilesModified {
-				_, _ = fmt.Fprintf(w, "* %s %s (hunks: %d)\n", fm.Action, fm.FilePath, fm.Hunks)
+				_, _ = fmt.Fprintf(w, "* %s %s (hunks: %d)\n", fm.Action, fm.DisplayPath(), fm.Hunks)
 			}
 		}
 

@@ -21,8 +21,18 @@ type ToolUsageStat struct {
 // FileModificationStat records a file modification event summary.
 type FileModificationStat struct {
 	FilePath string `json:"filePath"`
-	Action   string `json:"action"`
-	Hunks    int    `json:"hunks"`
+	// PreviousPath is the path a moved file had before the change.
+	PreviousPath string `json:"previousPath,omitempty"`
+	Action       string `json:"action"`
+	Hunks        int    `json:"hunks"`
+}
+
+// DisplayPath shows a moved file as "old -> new".
+func (f FileModificationStat) DisplayPath() string {
+	if f.PreviousPath != "" {
+		return f.PreviousPath + " -> " + f.FilePath
+	}
+	return f.FilePath
 }
 
 // ErrorRecord records an error encountered during the session.
@@ -228,7 +238,7 @@ func RenderSummary(w io.Writer, s SessionSummary, agentMode bool, jsonOut bool) 
 		if len(s.FilesModified) > 0 {
 			_, _ = fmt.Fprintf(w, "FILES_MODIFIED (%d):\n", len(s.FilesModified))
 			for _, fm := range s.FilesModified {
-				_, _ = fmt.Fprintf(w, "* %s %s (hunks: %d)\n", fm.Action, fm.FilePath, fm.Hunks)
+				_, _ = fmt.Fprintf(w, "* %s %s (hunks: %d)\n", fm.Action, fm.DisplayPath(), fm.Hunks)
 			}
 		}
 
@@ -277,7 +287,7 @@ func RenderSummary(w io.Writer, s SessionSummary, agentMode bool, jsonOut bool) 
 	if len(s.FilesModified) > 0 {
 		_, _ = fmt.Fprintf(w, "\nFiles Modified (%d):\n", len(s.FilesModified))
 		for _, fm := range s.FilesModified {
-			_, _ = fmt.Fprintf(w, "  - [%s] %s (%d hunks)\n", fm.Action, fm.FilePath, fm.Hunks)
+			_, _ = fmt.Fprintf(w, "  - [%s] %s (%d hunks)\n", fm.Action, fm.DisplayPath(), fm.Hunks)
 		}
 	}
 
@@ -318,14 +328,15 @@ func addFileModification(filesMap map[string]*FileModificationStat, fm *parser.F
 	if fm == nil {
 		return
 	}
-	key := fm.FilePath + ":" + fm.Action
+	key := fm.PreviousPath + ":" + fm.FilePath + ":" + fm.Action
 	if fStat, ok := filesMap[key]; ok {
 		fStat.Hunks += len(fm.Hunks)
 		return
 	}
 	filesMap[key] = &FileModificationStat{
-		FilePath: fm.FilePath,
-		Action:   fm.Action,
-		Hunks:    len(fm.Hunks),
+		FilePath:     fm.FilePath,
+		PreviousPath: fm.PreviousPath,
+		Action:       fm.Action,
+		Hunks:        len(fm.Hunks),
 	}
 }

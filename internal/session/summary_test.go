@@ -320,3 +320,35 @@ func TestComputeSessionSummary_CodexRollout(t *testing.T) {
 		t.Errorf("handoff FilesModified = %+v, want both patched files", h.FilesModified)
 	}
 }
+
+func TestCodexMidTurnPromptsAndMovedFiles(t *testing.T) {
+	events := codexRolloutEvents(t, []string{
+		`{"timestamp":"2026-11-07T10:00:00Z","type":"session_meta","payload":{"id":"t","cwd":"/work","source":"cli"}}`,
+		`{"timestamp":"2026-11-07T10:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"u1","started_at":1794045601}}`,
+		`{"timestamp":"2026-11-07T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Rename a.go"}]}}`,
+		`{"timestamp":"2026-11-07T10:00:02Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c1","arguments":"{\"cmd\":\"ls\"}"}}`,
+		// The user corrects the agent while the turn runs.
+		`{"timestamp":"2026-11-07T10:00:03Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Actually call it c.go"}]}}`,
+		// Another agent reports in.
+		`{"timestamp":"2026-11-07T10:00:04Z","type":"response_item","payload":{"type":"agent_message","author":"/root/helper","recipient":"/root","content":[{"type":"input_text","text":"Message Type: FINAL_ANSWER\nDone."}]}}`,
+		`{"timestamp":"2026-11-07T10:00:05Z","type":"event_msg","payload":{"type":"patch_apply_end","call_id":"c2","stdout":"","stderr":"","success":true,"changes":{"/work/a.go":{"type":"update","unified_diff":"@@ -1 +1 @@\n-a\n+b\n","move_path":"/work/c.go"}}}}`,
+		`{"timestamp":"2026-11-07T10:00:06Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"u1","completed_at":1794045606}}`,
+	})
+
+	h := ComputeHandoffContext("/work/rollout.jsonl", events, 10)
+	if h.InitialObjective != "Rename a.go" || h.LatestUserPrompt != "Actually call it c.go" {
+		t.Errorf("objective %q, latest %q; want the mid-turn correction as the latest prompt", h.InitialObjective, h.LatestUserPrompt)
+	}
+
+	s := ComputeSessionSummary("/work/rollout.jsonl", events)
+	if len(s.FilesModified) != 1 || s.FilesModified[0].DisplayPath() != "/work/a.go -> /work/c.go" {
+		t.Errorf("FilesModified = %+v; want the move shown as old -> new", s.FilesModified)
+	}
+	var agentOut strings.Builder
+	if err := RenderSummary(&agentOut, s, true, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(agentOut.String(), "EDIT /work/a.go -> /work/c.go") {
+		t.Errorf("summary output misses the move:\n%s", agentOut.String())
+	}
+}
