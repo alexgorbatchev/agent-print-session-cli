@@ -235,7 +235,7 @@ func renderAgentMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 					_, _ = fmt.Fprintf(w, "$ %s\n", cmd)
 				}
 			} else if fm := ev.Data.FileModification; fm != nil {
-				_, _ = fmt.Fprintf(w, "Action: %s %s\n", fm.Action, fm.FilePath)
+				_, _ = fmt.Fprintf(w, "Action: %s %s\n", fm.Action, modificationPath(fm))
 				if len(fm.Hunks) > 0 {
 					diffText := formatDiffHunks(fm.Hunks)
 					if diffText != "" {
@@ -267,7 +267,7 @@ func renderAgentMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 
 		case "file_modification":
 			if fm := ev.Data.FileModification; fm != nil {
-				_, _ = fmt.Fprintf(w, "\nFILE MOD: %s %s (hunks: %d)\n", fm.Action, fm.FilePath, len(fm.Hunks))
+				_, _ = fmt.Fprintf(w, "\nFILE MOD: %s %s (hunks: %d)\n", fm.Action, modificationPath(fm), len(fm.Hunks))
 				if len(fm.Hunks) > 0 {
 					diffText := formatDiffHunks(fm.Hunks)
 					if diffText != "" {
@@ -342,7 +342,7 @@ func renderHumanMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 					_, _ = fmt.Fprintf(w, "%s\n", wrapped)
 				}
 			} else if fm := ev.Data.FileModification; fm != nil {
-				actionLine := fmt.Sprintf("%s %s", fm.Action, fm.FilePath)
+				actionLine := fmt.Sprintf("%s %s", fm.Action, modificationPath(fm))
 				wrappedAction := WrapTextWithIndent(actionLine, "    ", termWidth)
 				_, _ = fmt.Fprintf(w, "%s\n", wrappedAction)
 				if len(fm.Hunks) > 0 {
@@ -380,7 +380,7 @@ func renderHumanMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 
 		case "file_modification":
 			if fm := ev.Data.FileModification; fm != nil {
-				_, _ = fmt.Fprintf(w, "[FILE MOD] %s %s (hunks: %d)\n", fm.Action, fm.FilePath, len(fm.Hunks))
+				_, _ = fmt.Fprintf(w, "[FILE MOD] %s %s (hunks: %d)\n", fm.Action, modificationPath(fm), len(fm.Hunks))
 				if len(fm.Hunks) > 0 {
 					diffText := formatDiffHunks(fm.Hunks)
 					if diffText != "" {
@@ -423,6 +423,11 @@ func extractSessionMeta(events []parser.ParsedEvent) (title, branch, cwd string)
 		}
 	}
 	return title, branch, cwd
+}
+
+// modificationPath shows a moved file as "old -> new".
+func modificationPath(fm *parser.FileModification) string {
+	return FileModificationStat{FilePath: fm.FilePath, PreviousPath: fm.PreviousPath}.DisplayPath()
 }
 
 // promptLabel names who sent a prompt: the user, or another agent.

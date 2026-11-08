@@ -556,3 +556,18 @@ func TestPrintCodexSession_MidTurnPrompts(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintCodexSession_MovedFile(t *testing.T) {
+	logPath := createTestLogFile(t, `{"type":"session_meta","timestamp":"2026-11-07T10:00:00Z","payload":{"id":"t","cwd":"/work","source":"cli"}}
+{"type":"event_msg","timestamp":"2026-11-07T10:00:05Z","payload":{"type":"patch_apply_end","call_id":"c2","stdout":"","stderr":"","success":true,"changes":{"/work/a.go":{"type":"update","unified_diff":"@@ -1 +1 @@\n-a\n+b\n","move_path":"/work/c.go"}}}}
+`)
+	for name, opts := range map[string]PrintOptions{"human": {}, "agent": {AgentMode: true}} {
+		var buf bytes.Buffer
+		if err := PrintCodexSession(&buf, logPath, opts); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(buf.String(), "EDIT /work/a.go -> /work/c.go") {
+			t.Errorf("%s output misses the move:\n%s", name, buf.String())
+		}
+	}
+}
