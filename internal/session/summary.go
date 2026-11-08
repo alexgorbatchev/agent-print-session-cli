@@ -90,6 +90,18 @@ func ComputeSessionSummary(filePath string, events []parser.ParsedEvent) Session
 			modelSet[*ev.Data.Model] = struct{}{}
 		}
 
+		// Usage arrives on turn_end or, for harnesses that report it per
+		// model response, on usage events.
+		if u := ev.Data.Usage; u != nil {
+			s.TokensIn += u.Input
+			s.TokensOut += u.Output
+			s.TokensCache += u.CacheRead
+			s.TokensTotal += u.Total
+		}
+		// File changes arrive on the tool_call that makes them or, for a
+		// multi-file Codex patch, on one file_modification event per file.
+		addFileModification(filesMap, ev.Data.FileModification)
+
 		switch ev.EventType {
 		case "turn_start":
 			s.TurnCount++
@@ -107,21 +119,6 @@ func ComputeSessionSummary(filePath string, events []parser.ParsedEvent) Session
 			st.Calls++
 			if ev.Data.ToolCallID != nil && *ev.Data.ToolCallID != "" {
 				toolByCallID[*ev.Data.ToolCallID] = st
-			}
-
-			if fm := ev.Data.FileModification; fm != nil {
-				key := fm.FilePath + ":" + fm.Action
-				fStat, fOk := filesMap[key]
-				if !fOk {
-					fStat = &FileModificationStat{
-						FilePath: fm.FilePath,
-						Action:   fm.Action,
-						Hunks:    len(fm.Hunks),
-					}
-					filesMap[key] = fStat
-				} else {
-					fStat.Hunks += len(fm.Hunks)
-				}
 			}
 
 		case "tool_result":
@@ -145,12 +142,6 @@ func ComputeSessionSummary(filePath string, events []parser.ParsedEvent) Session
 			}
 
 		case "turn_end":
-			if u := ev.Data.Usage; u != nil {
-				s.TokensIn += u.Input
-				s.TokensOut += u.Output
-				s.TokensCache += u.CacheRead
-				s.TokensTotal += u.Total
-			}
 			if ev.Data.RawHarnessCost != nil {
 				s.CostUSD += *ev.Data.RawHarnessCost
 			}
@@ -320,4 +311,21 @@ func formatDuration(ms int64) string {
 	hrs := mins / 60
 	remMins := mins % 60
 	return fmt.Sprintf("%dh%02dm", hrs, remMins)
+}
+
+// addFileModification merges one file change into the per-file statistics.
+func addFileModification(filesMap map[string]*FileModificationStat, fm *parser.FileModification) {
+	if fm == nil {
+		return
+	}
+	key := fm.FilePath + ":" + fm.Action
+	if fStat, ok := filesMap[key]; ok {
+		fStat.Hunks += len(fm.Hunks)
+		return
+	}
+	filesMap[key] = &FileModificationStat{
+		FilePath: fm.FilePath,
+		Action:   fm.Action,
+		Hunks:    len(fm.Hunks),
+	}
 }

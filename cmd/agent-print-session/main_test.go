@@ -492,8 +492,8 @@ func TestCLI_PiCommands(t *testing.T) {
 
 const sampleCodexLog = `{"type":"session_meta","timestamp":"2026-06-12T16:08:36.123Z","payload":{"id":"codex-cli-test","timestamp":"2026-06-12T16:08:36.123Z","cwd":"/repo","originator":"codex-tui","cli_version":"0.121.0","source":"cli","model_provider":"openai","git":{"commit_hash":"abcdef123","branch":"main","repository_url":"git@github.com:org/repo.git"}}}
 {"type":"turn_context","timestamp":"2026-06-12T16:08:37.000Z","payload":{"turn_id":"turn-1","cwd":"/repo","model":"o3-mini"}}
-{"type":"event_msg","timestamp":"2026-06-12T16:08:38.000Z","payload":{"type":"user_message","message":"implement codex support"}}
-{"type":"event_msg","timestamp":"2026-06-12T16:08:41.000Z","payload":{"type":"agent_message","message":"Codex support implemented"}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:38.000Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"implement codex support"}]}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:41.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Codex support implemented"}]}}
 `
 
 func setupSampleCodexLog(t *testing.T) string {

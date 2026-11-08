@@ -267,3 +267,56 @@ func TestComputeSessionSummary_AttributesToolErrorsByCallID(t *testing.T) {
 		t.Errorf("agent summary missing per-tool error count:\n%s", agentOut.String())
 	}
 }
+
+// codexRolloutEvents parses a Codex rollout in the shapes codex-rs writes.
+func codexRolloutEvents(t *testing.T, lines []string) []parser.ParsedEvent {
+	t.Helper()
+	p := parser.NewCodexParser()
+	var events []parser.ParsedEvent
+	for _, line := range lines {
+		evs, err := p.ParseLine([]byte(line))
+		if err != nil {
+			t.Fatalf("ParseLine(%s): %v", line, err)
+		}
+		events = append(events, evs...)
+	}
+	return events
+}
+
+func TestComputeSessionSummary_CodexRollout(t *testing.T) {
+	events := codexRolloutEvents(t, []string{
+		`{"timestamp":"2026-11-07T10:00:00Z","type":"session_meta","payload":{"id":"t","cwd":"/work","source":"cli","history_mode":"paginated"}}`,
+		`{"timestamp":"2026-11-07T10:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"u1","started_at":1794045601}}`,
+		`{"timestamp":"2026-11-07T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the build"}]}}`,
+		`{"timestamp":"2026-11-07T10:00:01Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","id":"m1","content":[{"type":"text","text":"Fix the build","text_elements":[]}]}}}`,
+		// Code-mode scripts: one fails, one succeeds although its output mentions an error.
+		`{"timestamp":"2026-11-07T10:00:02Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"c1","input":"run()"}}`,
+		`{"timestamp":"2026-11-07T10:00:03Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c1","output":[{"type":"input_text","text":"Script failed\nWall time 0.1 seconds\nOutput:\n"},{"type":"input_text","text":"Script error:\nboom"}]}}`,
+		`{"timestamp":"2026-11-07T10:00:04Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"c2","input":"run()"}}`,
+		`{"timestamp":"2026-11-07T10:00:05Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"c2","output":[{"type":"input_text","text":"Script completed\nWall time 0.1 seconds\nOutput:\n"},{"type":"input_text","text":"error: none found"}]}}`,
+		`{"timestamp":"2026-11-07T10:00:06Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":400,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":1050},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":400,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":1050},"model_context_window":258400}}}`,
+		// An applied patch that changed two files.
+		`{"timestamp":"2026-11-07T10:00:07Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"FileChange","id":"c3","changes":{"/work/a.go":{"type":"update","unified_diff":"@@ -1 +1 @@\n-a\n+b\n","move_path":null},"/work/b.go":{"type":"add","content":"package work\n"}},"status":"completed"}}}`,
+		`{"timestamp":"2026-11-07T10:00:09Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"u1","completed_at":1794045609,"last_agent_message":"Done."}}`,
+	})
+
+	s := ComputeSessionSummary("/work/rollout.jsonl", events)
+
+	if s.TurnCount != 1 {
+		t.Errorf("TurnCount = %d, want 1", s.TurnCount)
+	}
+	if len(s.Tools) != 1 || s.Tools[0].Name != "exec" || s.Tools[0].Calls != 2 || s.Tools[0].ErrorCalls != 1 {
+		t.Errorf("Tools = %+v, want exec with 2 calls and 1 failure", s.Tools)
+	}
+	if s.TokensIn != 600 || s.TokensOut != 50 || s.TokensCache != 400 || s.TokensTotal != 1050 {
+		t.Errorf("tokens = in %d out %d cache %d total %d, want 600/50/400/1050", s.TokensIn, s.TokensOut, s.TokensCache, s.TokensTotal)
+	}
+	if len(s.FilesModified) != 2 {
+		t.Errorf("FilesModified = %+v, want both patched files", s.FilesModified)
+	}
+
+	h := ComputeHandoffContext("/work/rollout.jsonl", events, 10)
+	if len(h.FilesModified) != 2 {
+		t.Errorf("handoff FilesModified = %+v, want both patched files", h.FilesModified)
+	}
+}

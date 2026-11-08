@@ -85,6 +85,9 @@ func ComputeHandoffContext(filePath string, events []parser.ParsedEvent, recentL
 		if ev.Data.Title != nil && *ev.Data.Title != "" {
 			h.Title = *ev.Data.Title
 		}
+		// File changes arrive on the tool_call that makes them or, for a
+		// multi-file Codex patch, on one file_modification event per file.
+		addFileModification(filesMap, ev.Data.FileModification)
 
 		switch ev.EventType {
 		case "run_started":
@@ -139,21 +142,6 @@ func ComputeHandoffContext(filePath string, events []parser.ParsedEvent, recentL
 				toolCalls[callID] = act
 			}
 			orderedActivities = append(orderedActivities, act)
-
-			if fm := ev.Data.FileModification; fm != nil {
-				key := fm.FilePath + ":" + fm.Action
-				fStat, fOk := filesMap[key]
-				if !fOk {
-					fStat = &FileModificationStat{
-						FilePath: fm.FilePath,
-						Action:   fm.Action,
-						Hunks:    len(fm.Hunks),
-					}
-					filesMap[key] = fStat
-				} else {
-					fStat.Hunks += len(fm.Hunks)
-				}
-			}
 
 		case "tool_result":
 			callID := ""

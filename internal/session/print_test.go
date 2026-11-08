@@ -447,9 +447,11 @@ func TestPrintPiSession_Cases(t *testing.T) {
 
 const sampleCodexLog = `{"type":"session_meta","timestamp":"2026-06-12T16:08:36.123Z","payload":{"id":"codex-cli-test-123","timestamp":"2026-06-12T16:08:36.123Z","cwd":"/codex-repo","originator":"codex-tui","cli_version":"0.121.0","source":"cli","model_provider":"openai","git":{"commit_hash":"abcdef123","branch":"feature/codex-support","repository_url":"git@github.com:org/repo.git"}}}
 {"type":"turn_context","timestamp":"2026-06-12T16:08:37.000Z","payload":{"turn_id":"turn-1","cwd":"/codex-repo","model":"o3-mini"}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:38.000Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix bug in main.go"}]}}
 {"type":"event_msg","timestamp":"2026-06-12T16:08:38.000Z","payload":{"type":"user_message","message":"fix bug in main.go"}}
 {"type":"response_item","timestamp":"2026-06-12T16:08:39.000Z","payload":{"type":"function_call","name":"exec_command","call_id":"c1","arguments":"{\"cmd\":\"ls -la\"}"}}
-{"type":"response_item","timestamp":"2026-06-12T16:08:40.000Z","payload":{"type":"function_call_output","call_id":"c1","output":"main.go go.mod"}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:40.000Z","payload":{"type":"function_call_output","call_id":"c1","output":"Exit code: 0\nOutput:\nmain.go go.mod"}}
+{"type":"response_item","timestamp":"2026-06-12T16:08:41.000Z","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I inspected the directory."}]}}
 {"type":"event_msg","timestamp":"2026-06-12T16:08:41.000Z","payload":{"type":"agent_message","message":"I inspected the directory."}}
 `
 
