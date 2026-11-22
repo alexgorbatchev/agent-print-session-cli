@@ -571,3 +571,60 @@ func TestPrintCodexSession_MovedFile(t *testing.T) {
 		}
 	}
 }
+
+const sampleAgyLog = `{"step_index":0,"type":"USER_INPUT","created_at":"2026-11-22T14:38:26Z","content":"fix bug in main.go"}
+{"step_index":1,"type":"PLANNER_RESPONSE","created_at":"2026-11-22T14:38:27Z","model":"gemini-2.5-pro","thinking":"checking file","tool_calls":[{"id":"call-1","name":"view_file","args":{"AbsolutePath":"/agy-repo/main.go"}}]}
+{"step_index":2,"type":"GENERIC","created_at":"2026-11-22T14:38:28Z","status":"DONE","content":"package main"}
+{"step_index":3,"type":"PLANNER_RESPONSE","created_at":"2026-11-22T14:38:29Z","model":"gemini-2.5-pro","content":"Fixed bug in main.go","status":"DONE","input_tokens":100,"output_tokens":20}
+`
+
+func TestPrintAgySession_Cases(t *testing.T) {
+	logPath := createTestLogFile(t, sampleAgyLog)
+
+	// 1. Human mode
+	var humanBuf bytes.Buffer
+	if err := PrintAgySession(&humanBuf, logPath, PrintOptions{AgentMode: false}); err != nil {
+		t.Fatalf("unexpected error on PrintAgySession human mode: %v", err)
+	}
+	humanOut := humanBuf.String()
+	if !strings.Contains(humanOut, "[USER]") || !strings.Contains(humanOut, "fix bug in main.go") {
+		t.Errorf("expected USER prompt in Agy human mode: %s", humanOut)
+	}
+	if !strings.Contains(humanOut, "[TOOL: view_file]") || !strings.Contains(humanOut, "Path: /agy-repo/main.go") {
+		t.Errorf("expected view_file tool path in Agy human mode: %s", humanOut)
+	}
+	if !strings.Contains(humanOut, "[ASSISTANT]") || !strings.Contains(humanOut, "Fixed bug in main.go") {
+		t.Errorf("expected ASSISTANT in Agy human mode: %s", humanOut)
+	}
+
+	// 2. Agent mode
+	var agentBuf bytes.Buffer
+	if err := PrintAgySession(&agentBuf, logPath, PrintOptions{AgentMode: true}); err != nil {
+		t.Fatalf("unexpected error on PrintAgySession agent mode: %v", err)
+	}
+	agentOut := agentBuf.String()
+	if !strings.Contains(agentOut, "USER:\nfix bug in main.go") {
+		t.Errorf("expected USER in Agy agent mode: %s", agentOut)
+	}
+	if !strings.Contains(agentOut, "TOOL view_file:\nPath: /agy-repo/main.go") {
+		t.Errorf("expected TOOL view_file path in Agy agent mode: %s", agentOut)
+	}
+	if !strings.Contains(agentOut, "ASSISTANT:\nFixed bug in main.go") {
+		t.Errorf("expected ASSISTANT in Agy agent mode: %s", agentOut)
+	}
+
+	// 3. JSON mode
+	var jsonBuf bytes.Buffer
+	if err := PrintAgySession(&jsonBuf, logPath, PrintOptions{JSON: true}); err != nil {
+		t.Fatalf("unexpected error on PrintAgySession json mode: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(jsonBuf.String()), "[") {
+		t.Errorf("expected JSON array output, got: %s", jsonBuf.String())
+	}
+
+	// 4. File not found
+	var notFoundBuf bytes.Buffer
+	if err := PrintAgySession(&notFoundBuf, "/non/existent/agy.jsonl", PrintOptions{}); err == nil {
+		t.Fatal("expected error on non-existent file, got nil")
+	}
+}

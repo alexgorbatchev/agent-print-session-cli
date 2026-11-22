@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/alexgorbatchev/agent-print-session-cli/internal/session"
@@ -331,10 +332,117 @@ func newRootCmd() *cobra.Command {
 	codexCmd.AddCommand(codexHandoffCmd)
 	rootCmd.AddCommand(codexCmd)
 
+	rootCmd.AddCommand(newHarnessCmd(
+		"agy",
+		[]string{"antigravity"},
+		"Antigravity",
+		runPrintAgy,
+	))
+
 	if err := cobrahelptree.Setup(rootCmd); err != nil {
 		panic(err) // A non-nil root is a programmer invariant.
 	}
 	return rootCmd
+}
+
+func newHarnessCmd(
+	use string,
+	aliases []string,
+	displayName string,
+	runner func(*cobra.Command, string, printFlags) error,
+) *cobra.Command {
+	harnessCmd := &cobra.Command{
+		Use:     use,
+		Aliases: aliases,
+		Short:   fmt.Sprintf("Inspect and print %s session transcripts", displayName),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				flags := getPrintFlags(cmd)
+				return runner(cmd, args[0], flags)
+			}
+			return cmd.Help()
+		},
+	}
+
+	var pFlags printFlags
+	printCmd := &cobra.Command{
+		Use:   "print <session-id-or-path>",
+		Short: fmt.Sprintf("Parse and print %s session events by ID or file path", displayName),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if pFlags.filePath != "" {
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := pFlags.filePath
+			if target == "" && len(args) > 0 {
+				target = args[0]
+			}
+			return runner(cmd, target, pFlags)
+		},
+	}
+	setupFlags(printCmd, &pFlags)
+	setupFlags(harnessCmd, &pFlags)
+
+	var sFlags printFlags
+	summaryCmd := &cobra.Command{
+		Use:   "summary <session-id-or-path>",
+		Short: fmt.Sprintf("Print a high-level token-efficient summary of a %s session", displayName),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if sFlags.filePath != "" {
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := sFlags.filePath
+			if target == "" && len(args) > 0 {
+				target = args[0]
+			}
+			sFlags.summaryOnly = true
+			return runner(cmd, target, sFlags)
+		},
+	}
+	summaryCmd.Flags().BoolVar(&sFlags.jsonOut, "json", false, "Output summary as formatted JSON")
+	summaryCmd.Flags().StringVar(&sFlags.filePath, "path", "", fmt.Sprintf("Direct path to %s session .jsonl file", displayName))
+
+	var hFlags printFlags
+	handoffCmd := &cobra.Command{
+		Use:     "handoff <session-id-or-path>",
+		Aliases: []string{"continue", "resume"},
+		Short:   fmt.Sprintf("Generate structured continuation context for resuming work started in another %s session", displayName),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if hFlags.filePath != "" {
+				return nil
+			}
+			if len(args) != 1 {
+				return fmt.Errorf("accepts 1 arg(s), received %d", len(args))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := hFlags.filePath
+			if target == "" && len(args) > 0 {
+				target = args[0]
+			}
+			hFlags.handoff = true
+			return runner(cmd, target, hFlags)
+		},
+	}
+	handoffCmd.Flags().BoolVar(&hFlags.jsonOut, "json", false, "Output handoff context as formatted JSON")
+	handoffCmd.Flags().StringVar(&hFlags.filePath, "path", "", fmt.Sprintf("Direct path to %s session .jsonl file", displayName))
+
+	harnessCmd.AddCommand(printCmd)
+	harnessCmd.AddCommand(summaryCmd)
+	harnessCmd.AddCommand(handoffCmd)
+	return harnessCmd
 }
 
 func setupFlags(cmd *cobra.Command, flags *printFlags) {
@@ -435,7 +543,21 @@ func runPrintPi(cmd *cobra.Command, target string, flags printFlags) error {
 }
 
 func runPrintCodex(cmd *cobra.Command, target string, flags printFlags) error {
-	resolvedPath, err := session.FindCodexSession(target)
+	return runPrintSession(cmd, target, flags, session.FindCodexSession, session.PrintCodexSession)
+}
+
+func runPrintAgy(cmd *cobra.Command, target string, flags printFlags) error {
+	return runPrintSession(cmd, target, flags, session.FindAgySession, session.PrintAgySession)
+}
+
+func runPrintSession(
+	cmd *cobra.Command,
+	target string,
+	flags printFlags,
+	findFn func(string) (string, error),
+	printFn func(io.Writer, string, session.PrintOptions) error,
+) error {
+	resolvedPath, err := findFn(target)
 	if err != nil {
 		return err
 	}
@@ -457,7 +579,7 @@ func runPrintCodex(cmd *cobra.Command, target string, flags printFlags) error {
 		All:         flags.all,
 	}
 
-	return session.PrintCodexSession(cmd.OutOrStdout(), resolvedPath, opts)
+	return printFn(cmd.OutOrStdout(), resolvedPath, opts)
 }
 
 func run(args []string) error {

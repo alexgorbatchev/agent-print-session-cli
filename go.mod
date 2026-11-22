@@ -3,7 +3,7 @@ module github.com/alexgorbatchev/agent-print-session-cli
 go 1.26.2
 
 require (
-	github.com/alexgorbatchev/agent-parser v1.2.0
+	github.com/alexgorbatchev/agent-parser v1.2.2-0.20261122150059-4253450b0afa
 	github.com/alexgorbatchev/cobra-help-tree/v4 v4.0.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.46.0
@@ -25,4 +25,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 	modernc.org/sqlite v1.61.0 // indirect
+	mvdan.cc/sh/v3 v3.14.1 // indirect
 )

@@ -641,3 +641,102 @@ func TestCLI_CodexCommands(t *testing.T) {
 		t.Fatal("expected error on non-existent codex session, got nil")
 	}
 }
+
+const sampleAgyLog = `{"step_index":0,"type":"USER_INPUT","created_at":"2026-11-22T14:38:26Z","content":"implement agy support"}
+{"step_index":1,"type":"PLANNER_RESPONSE","created_at":"2026-11-22T14:38:27Z","model":"gemini-2.5-pro","content":"Antigravity support implemented","status":"DONE","input_tokens":50,"output_tokens":10}
+`
+
+func setupSampleAgyLog(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	logsDir := filepath.Join(tmpDir, "agy-conv-123", ".system_generated", "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		t.Fatalf("failed to create agy dirs: %v", err)
+	}
+	p := filepath.Join(logsDir, "transcript_full.jsonl")
+	if err := os.WriteFile(p, []byte(sampleAgyLog), 0o600); err != nil {
+		t.Fatalf("failed to write agy test file: %v", err)
+	}
+	return p
+}
+
+func TestCLI_AgyCommands(t *testing.T) {
+	agyPath := setupSampleAgyLog(t)
+
+	// 1. Agy help & alias
+	for _, cmdName := range []string{"agy", "antigravity"} {
+		cmdHelp := newRootCmd()
+		var outHelp bytes.Buffer
+		cmdHelp.SetOut(&outHelp)
+		cmdHelp.SetArgs([]string{cmdName, "--help"})
+		if err := cmdHelp.Execute(); err != nil {
+			t.Fatalf("expected nil error on %s --help: %v", cmdName, err)
+		}
+	}
+
+	// 2. Agy no args (help)
+	cmdNoArgs := newRootCmd()
+	var outNoArgs bytes.Buffer
+	cmdNoArgs.SetOut(&outNoArgs)
+	cmdNoArgs.SetArgs([]string{"agy"})
+	if err := cmdNoArgs.Execute(); err != nil {
+		t.Fatalf("expected nil error on agy no args: %v", err)
+	}
+
+	// 3. Agy shorthand invocation: agy <path>
+	cmdShort := newRootCmd()
+	var outShort bytes.Buffer
+	cmdShort.SetOut(&outShort)
+	cmdShort.SetArgs([]string{"agy", agyPath})
+	if err := cmdShort.Execute(); err != nil {
+		t.Fatalf("unexpected error on agy shorthand: %v", err)
+	}
+	if !strings.Contains(outShort.String(), "implement agy support") {
+		t.Errorf("expected prompt in agy shorthand output: %s", outShort.String())
+	}
+
+	// 4. Antigravity alias print: antigravity print <path>
+	cmdPrint := newRootCmd()
+	var outPrint bytes.Buffer
+	cmdPrint.SetOut(&outPrint)
+	cmdPrint.SetArgs([]string{"antigravity", "print", agyPath})
+	if err := cmdPrint.Execute(); err != nil {
+		t.Fatalf("unexpected error on antigravity print: %v", err)
+	}
+	if !strings.Contains(outPrint.String(), "Antigravity support implemented") {
+		t.Errorf("expected assistant text in agy print output: %s", outPrint.String())
+	}
+
+	// 5. Agy summary & --json --path
+	cmdSum := newRootCmd()
+	var outSum bytes.Buffer
+	cmdSum.SetOut(&outSum)
+	cmdSum.SetArgs([]string{"agy", "summary", "--json", "--path", agyPath})
+	if err := cmdSum.Execute(); err != nil {
+		t.Fatalf("unexpected error on agy summary: %v", err)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(outSum.String()), "{") {
+		t.Errorf("expected JSON object from summary, got: %s", outSum.String())
+	}
+
+	// 6. Agy handoff & --path
+	cmdHandoff := newRootCmd()
+	var outHandoff bytes.Buffer
+	cmdHandoff.SetOut(&outHandoff)
+	cmdHandoff.SetArgs([]string{"agy", "handoff", "--path", agyPath})
+	if err := cmdHandoff.Execute(); err != nil {
+		t.Fatalf("unexpected error on agy handoff: %v", err)
+	}
+	if !strings.Contains(outHandoff.String(), "CONTINUATION_CONTEXT") && !strings.Contains(outHandoff.String(), "HANDOFF") {
+		t.Errorf("expected handoff header, got: %s", outHandoff.String())
+	}
+
+	// 7. Missing args & not found
+	for _, args := range [][]string{{"agy", "print"}, {"agy", "summary"}, {"agy", "handoff"}, {"agy", "print", "missing-agy-id"}} {
+		c := newRootCmd()
+		c.SetArgs(args)
+		if err := c.Execute(); err == nil {
+			t.Fatalf("expected error for %v, got nil", args)
+		}
+	}
+}

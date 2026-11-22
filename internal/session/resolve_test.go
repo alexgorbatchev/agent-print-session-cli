@@ -327,3 +327,92 @@ func TestFindCodexSession_HomeAndXDG(t *testing.T) {
 		t.Fatalf("expected %s, got %s", xdgFile, found)
 	}
 }
+
+func TestFindAgySession_Cases(t *testing.T) {
+	if _, err := FindAgySession(""); err == nil {
+		t.Fatal("expected error on empty target, got nil")
+	}
+
+	tmpRoot := t.TempDir()
+	t.Setenv("HOME", tmpRoot)
+	t.Setenv("GEMINI_HOME", "")
+	t.Setenv("AGY_SESSIONS_DIR", "")
+
+	// Direct file path
+	directFile := filepath.Join(tmpRoot, "direct.jsonl")
+	if err := os.WriteFile(directFile, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found, err := FindAgySession(directFile)
+	if err != nil || found != directFile {
+		t.Fatalf("direct file: found=%q err=%v", found, err)
+	}
+
+	// Direct conversation directory preferring transcript_full.jsonl over transcript.jsonl
+	directDir := filepath.Join(tmpRoot, "direct-conv")
+	directLogs := filepath.Join(directDir, ".system_generated", "logs")
+	if err := os.MkdirAll(directLogs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	directShort := filepath.Join(directLogs, "transcript.jsonl")
+	directFull := filepath.Join(directLogs, "transcript_full.jsonl")
+	if err := os.WriteFile(directShort, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(directFull, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	found, err = FindAgySession(directDir)
+	if err != nil || found != directFull {
+		t.Fatalf("direct dir: found=%q want %q err=%v", found, directFull, err)
+	}
+
+	// Search AGY_SESSIONS_DIR: exact, prefix, substring, transcript.jsonl fallback
+	brainDir := filepath.Join(tmpRoot, "agy-brain")
+	exactLogs := filepath.Join(brainDir, "conv-alpha-111", ".system_generated", "logs")
+	prefixLogs := filepath.Join(brainDir, "conv-beta-222", ".system_generated", "logs")
+	if err := os.MkdirAll(exactLogs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(prefixLogs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exactPath := filepath.Join(exactLogs, "transcript_full.jsonl")
+	prefixPath := filepath.Join(prefixLogs, "transcript.jsonl")
+	if err := os.WriteFile(exactPath, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prefixPath, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("AGY_SESSIONS_DIR", brainDir)
+	if got, err := FindAgySession("conv-alpha-111"); err != nil || got != exactPath {
+		t.Fatalf("exact match: got=%q want=%q err=%v", got, exactPath, err)
+	}
+	if got, err := FindAgySession("conv-beta"); err != nil || got != prefixPath {
+		t.Fatalf("prefix match: got=%q want=%q err=%v", got, prefixPath, err)
+	}
+	if got, err := FindAgySession("alpha-111"); err != nil || got != exactPath {
+		t.Fatalf("substring match: got=%q want=%q err=%v", got, exactPath, err)
+	}
+	if _, err := FindAgySession("missing-agy-id"); err == nil {
+		t.Fatal("expected error for missing agy session")
+	}
+
+	// GEMINI_HOME fallback
+	t.Setenv("AGY_SESSIONS_DIR", "")
+	geminiHome := filepath.Join(tmpRoot, "gemini-home")
+	geminiLogs := filepath.Join(geminiHome, "antigravity-cli", "brain", "conv-gemini-333", ".system_generated", "logs")
+	if err := os.MkdirAll(geminiLogs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	geminiPath := filepath.Join(geminiLogs, "transcript_full.jsonl")
+	if err := os.WriteFile(geminiPath, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GEMINI_HOME", geminiHome)
+	if got, err := FindAgySession("conv-gemini-333"); err != nil || got != geminiPath {
+		t.Fatalf("GEMINI_HOME match: got=%q want=%q err=%v", got, geminiPath, err)
+	}
+}

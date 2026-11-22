@@ -15,7 +15,7 @@ Standalone CLI utility (`agent-print-session`) for inspecting, summarizing, filt
 
 ## Key gotchas
 
-- **Subject-first CLI hierarchy**: Commands strictly follow subject-first ordering: `agent-print-session [claude|codex|pi] [print|summary|handoff] <session-id>`. Single-argument shorthand `agent-print-session [claude|codex|pi] <session-id>` invokes `print`.
+- **Subject-first CLI hierarchy**: Commands strictly follow subject-first ordering: `agent-print-session [claude|codex|pi|agy] [print|summary|handoff] <session-id>`. Single-argument shorthand `agent-print-session [claude|codex|pi|agy] <session-id>` invokes `print`.
 - **Dual-mode output (`AGENT=1`)**: When `AGENT=1`, output must omit decorative dividers and tables in favor of compact, token-conservative formatting.
 - **Read-only execution**: Never mutate or create files inside user transcript or session storage directories.
 

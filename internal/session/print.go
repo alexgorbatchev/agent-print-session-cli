@@ -54,6 +54,15 @@ func PrintCodexSession(w io.Writer, filePath string, opts PrintOptions) error {
 	})
 }
 
+// PrintAgySession reads and parses an Antigravity (`agy`) session transcript file using agent-parser,
+// rendering output like a harness display.
+func PrintAgySession(w io.Writer, filePath string, opts PrintOptions) error {
+	p := parser.NewAgyParser()
+	return printSessionWithParser(w, filePath, opts, func(line []byte) ([]parser.ParsedEvent, error) {
+		return p.ParseLine(line)
+	})
+}
+
 func printSessionWithParser(w io.Writer, filePath string, opts PrintOptions, parseFn func([]byte) ([]parser.ParsedEvent, error)) error {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -242,7 +251,7 @@ func renderAgentMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 						_, _ = fmt.Fprintf(w, "%s\n", diffText)
 					}
 				}
-			} else if p, ok := ev.Data.ToolInput["path"].(string); ok && p != "" {
+			} else if p := firstToolInputString(ev.Data.ToolInput, "path", "Path", "AbsolutePath", "TargetFile"); p != "" {
 				_, _ = fmt.Fprintf(w, "Path: %s\n", p)
 			} else if len(ev.Data.ToolInput) > 0 {
 				inBytes, _ := json.MarshalIndent(ev.Data.ToolInput, "", "  ")
@@ -352,7 +361,7 @@ func renderHumanMode(w io.Writer, filePath string, events []parser.ParsedEvent) 
 						_, _ = fmt.Fprintf(w, "%s\n", wrapped)
 					}
 				}
-			} else if p, ok := ev.Data.ToolInput["path"].(string); ok && p != "" {
+			} else if p := firstToolInputString(ev.Data.ToolInput, "path", "Path", "AbsolutePath", "TargetFile"); p != "" {
 				wrapped := WrapTextWithIndent("Path: "+p, "    ", termWidth)
 				_, _ = fmt.Fprintf(w, "%s\n", wrapped)
 			} else if len(ev.Data.ToolInput) > 0 {
@@ -568,6 +577,15 @@ func WrapTextWithIndent(text string, indent string, termWidth int) string {
 	}
 
 	return strings.Join(result, "\n")
+}
+
+func firstToolInputString(input map[string]interface{}, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := input[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func isNumeric(s string) bool {
