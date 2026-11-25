@@ -252,3 +252,29 @@ fn codex_native_turns_preserve_absorbed_prompts_and_each_confirmed_move() {
     assert_eq!(moved.hunks, 1);
     assert_eq!(handoff.files_modified[1].file_path, "note.txt");
 }
+
+#[test]
+fn codex_native_usage_events_sum_per_request_tokens() {
+    let fixture = [
+        r#"{"type":"event_msg","timestamp":"2026-11-07T10:00:01Z","payload":{"type":"task_started"}}"#,
+        r#"{"type":"event_msg","timestamp":"2026-11-07T10:00:02Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":400,"output_tokens":50,"total_tokens":1050},"total_token_usage":{"input_tokens":1000,"cached_input_tokens":400,"output_tokens":50,"total_tokens":1050}}}}"#,
+        r#"{"type":"event_msg","timestamp":"2026-11-07T10:00:03Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":300,"cached_input_tokens":80,"output_tokens":20,"total_tokens":320},"total_token_usage":{"input_tokens":1300,"cached_input_tokens":480,"output_tokens":70,"total_tokens":1370}}}}"#,
+        r#"{"type":"event_msg","timestamp":"2026-11-07T10:00:04Z","payload":{"type":"task_complete","last_agent_message":"Done."}}"#,
+    ]
+    .join("\n");
+    let events = load(Cursor::new(fixture), Harness::Codex).unwrap();
+    let summary = Summary::compute("log", &events);
+
+    assert_eq!(summary.turn_count, 1);
+    assert_eq!(summary.tokens_in, 820);
+    assert_eq!(summary.tokens_out, 70);
+    assert_eq!(summary.tokens_cache, 480);
+    assert_eq!(summary.tokens_total, 1370);
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        ["turn_start", "usage", "usage", "turn_end"]
+    );
+}
