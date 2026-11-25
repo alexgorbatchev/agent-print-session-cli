@@ -1,55 +1,48 @@
-# Minimum statement coverage the package must keep, enforced by `just coverage`
-min_coverage := "90"
-
-# Default recipe: list available tasks
 default:
     @just --list
 
-# Build the binary into bin/
 build:
-    @mkdir -p bin
-    go build -o bin/agent-print-session ./cmd/agent-print-session
+    cargo build --locked --bin agent-print-session
+    mkdir -p bin
+    cp target/debug/agent-print-session bin/agent-print-session
 
-# Run the CLI in human mode, e.g. `just run --help`
 run *args:
-    go run ./cmd/agent-print-session {{ args }}
+    cargo run --locked --bin agent-print-session -- {{args}}
 
-# Run the CLI in agent mode, e.g. `just run-ai --help`
 run-ai *args:
-    AGENT=1 go run ./cmd/agent-print-session {{ args }}
+    AGENT=1 cargo run --locked --bin agent-print-session -- {{args}}
 
-# Run all unit tests with race detector
 test:
-    go test -v -race ./...
+    cargo test --locked --all-targets
 
-# Run the tests and fail when statement coverage drops below the floor
-coverage:
+# The workspace contains one CLI package. Tests load the agent skill from source.
+test-affected base="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
-    go test -race -coverpkg=./... -coverprofile=coverage.out ./...
-    total="$(go tool cover -func=coverage.out | awk '/^total:/ { print substr($3, 1, length($3) - 1) }')"
-    if awk "BEGIN { exit ({{ min_coverage }} <= ${total}) ? 0 : 1 }"; then
-        echo "statement coverage ${total}% meets the {{ min_coverage }}% floor"
-    else
-        echo "statement coverage ${total}% is below the {{ min_coverage }}% floor" >&2
-        exit 1
-    fi
+    base=$(git merge-base {{ quote(base) }} HEAD)
+    files=$(git diff --name-only "$base" --; git ls-files --others --exclude-standard)
+    while IFS= read -r file; do
+        case "$file" in
+            ""|AGENTS.md|README.md|docs/*|LICENSE|go-upstream.json) ;;
+            *)
+                echo 'Selected agent-print-session-cli: package or test inputs changed.'
+                just test
+                exit
+                ;;
+        esac
+    done <<< "$files"
+    echo 'No agent-print-session test inputs changed.'
 
-# Format Go source code
 fmt:
-    go fmt ./...
+    cargo fmt --package agent-print-session-cli
 
-# Check module hygiene, vet, and run linter
+fmt-check:
+    cargo fmt --package agent-print-session-cli -- --check
+
 lint:
-    go mod tidy -diff
-    go vet ./...
-    golangci-lint run
+    cargo clippy --locked --all-targets -- -D warnings
 
-# Run every static check, tests, and coverage floor
-check:
-    just lint
-    just coverage
+coverage:
+    cargo llvm-cov --locked --all-targets --ignore-filename-regex '(^|/)(tests|scripts)/' --fail-under-lines 90 --fail-under-functions 90
 
-# Download project dependencies for local development
-setup:
-    go mod download
+check: fmt-check lint test coverage

@@ -1,120 +1,108 @@
-`agent-print-session` locates, inspects, filters, and prints AI coding agent session transcripts from disk. It translates raw JSONL streams into human-readable terminal output, structured JSON, or concise agent-facing context blocks for resuming past work.
+`agent-print-session` helps developers and coding agents read local Antigravity, Claude Code, Codex, and Pi session logs, summarize activity, and prepare continuation context.
+
+The Go implementation is deprecated. See the [`go-legacy` branch](https://github.com/alexgorbatchev/agent-print-session-cli/tree/go-legacy) for its source. Existing Go release tags remain available.
 
 # What It Does
 
-- **Automatic transcript discovery**: Locates session files by exact path, full session ID, or prefix across standard storage locations (`~/.claude/projects`, `~/.claude/sessions`, `~/.pi/agent/sessions`, `~/.codex/sessions`, `~/.gemini/antigravity-cli/brain`, and `$XDG_DATA_HOME`).
-- **Subject-first CLI commands**: Provides consistent subcommands across supported harnesses (`agent-print-session claude`, `agent-print-session codex`, `agent-print-session pi`, `agent-print-session agy`).
-- **Granular event filtering**: Focuses output on errors (`--errors`), file edits (`--files`), tool executions (`--tools`), prompts (`--prompts`), or the most recent turn (`--last-turn`).
-- **Work resumption & handoff**: Extracts initial goals, active branches, modified files, recent errors, and next steps via `handoff` (or aliases `continue`, `resume`).
-- **High-level summaries**: Aggregates token usage, session duration, and tool execution tallies via `summary`.
-- **Dual-mode output**: Automatically switches to dense, token-conservative formatting when invoked with `AGENT=1`.
+- **Read conversations:** Print user messages, assistant replies, tool activity, and file diffs.
+- **Find sessions:** Resolve a full path, session ID, or filename fragment across configured session directories.
+- **Summarize activity:** Aggregate tools, failed calls, changed files, token usage, and recorded costs.
+- **Prepare handoffs:** Collect the objective, latest prompt, final response, recent tools, and errors.
+- **Produce structured results:** Emit JSON or compact agent text alongside human formatting.
 
 # How It Works
 
-- The user invokes `agent-print-session <harness> <action> <session-id>` (or uses shorthand `agent-print-session <harness> <session-id>`).
-- `agent-print-session` resolves the session target: if a direct file path is provided, it reads that path; otherwise, it scans standard harness directories for matching `.jsonl` files.
-- The utility parses each line using `github.com/alexgorbatchev/agent-parser`, constructing a structured event stream.
-- The stream passes through requested filters (`--files`, `--errors`, `--tail`, `--last-turn`) and pagination.
-- Filtered events are rendered to stdout in styled human mode, machine-readable JSON (`--json`), or token-conservative agent mode (`AGENT=1`).
+- Choose `agy` (alias `antigravity`), `claude`, `codex`, or `pi` to match the transcript's harness.
+- Supply a session identifier or a file path. Antigravity also accepts a conversation directory. Use `--path` to bypass discovery.
+- Choose `print`, `summary`, or `handoff`. Supplying a target directly after the harness selects `print`.
+- Narrow printed events with a filter and pagination, or use `--json` for structured output.
 
 # How it Really Works
 
-- **Discovery traversal**: Search routines scan projects and session directories non-recursively for exact UUID matches first, falling back to prefix matching across candidate `.jsonl` filenames without invoking shell utilities.
-- **Zero file mutation**: `agent-print-session` strictly opens transcript files in read-only mode, never writing or creating temporary files.
-- **Agent mode token conservation**: When `AGENT=1`, horizontal divider lines, decorative boxes, and padding are omitted in favor of compact text tags (`OK:`, `ERR:`), and output defaults to the most recent 100 events unless `--all` is specified.
-- **Diff formatting**: Tool calls containing file modifications (`Edit`, `Write`, `apply_patch`) are formatted into colored terminal diffs with line numbers and added/deleted indicators.
-- **Exit codes**: Returns `0` on successful parsing, `1` on missing sessions, invalid flags, or unreadable files.
-
-# Prerequisites
-
-- macOS or Linux
-- No runtime dependencies (pure Go binary)
+- Discovery searches configured directories in priority order. Within a directory, more specific matches win. Antigravity searches its conversation directories and prefers `transcript_full.jsonl` to `transcript.jsonl`. Discovery skips directory symlinks.
+- Reading is local and read-only. The command opens no network connections, invokes no harness, and changes no transcript files.
+- Malformed, unrelated, and blank JSONL records are skipped. File read failures and lines beyond 10 MiB fail the command.
+- Both output modes retain the complete selected conversation by default. `AGENT=1` selects compact, unwrapped text; human text wraps to the terminal width.
+- Summaries and handoffs aggregate the entire session. Print selection applies last-turn first, then the first enabled errors/files/tools/prompts filter, then a reducing positive limit or tail.
+- Prompt output includes messages received during a turn. Handoffs use the latest user prompt, and file moves display both the original and destination paths.
+- Results go to stdout; errors print once to stderr. Success exits 0, and argument, file, parser-limit, and output failures exit 1.
+- Displayed filesystem fields under the home directory use `~`. JSON preserves recorded paths and transcript content. Handoffs include recorded errors without establishing whether later work resolved them.
 
 # Installation
 
-Download the latest prebuilt binary from the [GitHub Releases](https://github.com/alexgorbatchev/agent-print-session-cli/releases) page.
+Download the archive for your operating system and architecture from the [latest GitHub release](https://github.com/alexgorbatchev/agent-print-session-cli/releases/latest), extract it, and place `agent-print-session` on your `PATH`.
 
-```bash
-curl -sSL https://github.com/alexgorbatchev/agent-print-session-cli/releases/download/v1.0.0/agent-print-session-cli_1.0.0_darwin_arm64.tar.gz | tar -xz
-sudo mv agent-print-session /usr/local/bin/
+For macOS with Apple Silicon:
+
+```sh
+release_url=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/alexgorbatchev/agent-print-session-cli/releases/latest)
+tag=${release_url##*/}
+version=${tag#v}
+archive="agent-print-session-cli_${version}_darwin_arm64.tar.gz"
+curl -fLO "https://github.com/alexgorbatchev/agent-print-session-cli/releases/download/${tag}/${archive}"
+tar -xzf "$archive"
+mkdir -p "$HOME/.local/bin"
+install -m 755 agent-print-session "$HOME/.local/bin/agent-print-session"
+"$HOME/.local/bin/agent-print-session" --version
 ```
 
 # Quick Start
 
-### Inspect a session transcript
-
-```bash
-agent-print-session claude c0ffee-1234
+```sh
+agent-print-session claude print --path ./session.jsonl
+AGENT=1 agent-print-session codex handoff session-prefix
+agent-print-session pi summary --json --path ./session.jsonl
+agent-print-session agy print conversation-prefix
+agent-print-session claude print --errors --tail 10 session-id
+agent-print-session skill
 ```
 
-Sample Output:
+Sample Output for a Claude transcript containing one prompt and reply, with `AGENT=1`:
+
 ```text
-Session: Refactor Authentication Flow
-Branch:  feat/auth-jwt
-CWD:     /workspace/repo
-Events:  14
+SESSION: .tmp/example.jsonl
+TITLE: Example session
 
-[09:15:02] USER PROMPT
-Please migrate authentication from sessions to JWT.
+USER:
+Explain this project
 
-[09:15:04] TOOL CALL
-Tool: Edit
-File: src/auth.go (EDIT)
-@@ -10,3 +10,4 @@
--func ValidateSession(s string) bool
-+func ValidateToken(t string) (*Claims, error)
-
-[09:15:06] TURN END
-Model: claude-3-7-sonnet | Tokens: 4,120 in, 580 out
-```
-
-### Resume past work with a handoff summary
-
-```bash
-agent-print-session claude handoff c0ffee-1234
-```
-
-### Output JSON for automated processing
-
-```bash
-agent-print-session pi print --json --last-turn 4d3f21
+ASSISTANT:
+It reads local session transcripts.
 ```
 
 # Options & Flags
 
-### Global Flags
+Root options:
 
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--help` | `-h` | `false` | Display help screen and command hierarchy |
-| `--version` | `-v` | `false` | Display version information |
+| `--version` | `-v` | `false` | Print the raw version and newline. |
+| `--help` | `-h` | `false` | Show help; available on every command. |
 
-### `agent-print-session [claude|codex|pi|agy] print` Flags
+`agent-print-session <harness>` and `agent-print-session <harness> <print|summary|handoff>`:
 
 | Flag | Short | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--last-turn` | | `false` | Output only the final conversational turn |
-| `--errors` | | `false` | Filter to errors and failed tool executions only |
-| `--files` | | `false` | Filter to file modifications and diffs only |
-| `--tools` | | `false` | Filter to tool invocations and results only |
-| `--prompts` | | `false` | Filter to user prompts and turn boundaries only |
-| `--summary` | | `false` | Output high-level session summary only |
-| `--handoff` | | `false` | Output continuation context for resuming work |
-| `--json` | | `false` | Output events as formatted JSON |
-| `--tail <N>` | | `0` | Show only the last N events (0 means all) |
-| `--limit <N>`| | `0` | Show only the first N events (0 means all) |
-| `--all` | | `false` | Output full transcript without default agent-mode limit |
-| `--path <path>`| | `""` | Direct path to session file |
+| `--path <path>` | | absent | Use a transcript file or an Antigravity conversation directory; overrides a positional target. |
+| `--json` | | `false` | Print the selected events array, summary, or handoff as pretty JSON. |
 
-# Supported Harnesses
+`agent-print-session <harness>` and `agent-print-session <harness> print`:
 
-| Harness | Subcommand | Default Search Paths |
-| :--- | :--- | :--- |
-| **Claude Code** | `agent-print-session claude` | `~/.claude/projects/`, `~/.claude/sessions/` |
-| **OpenAI Codex** | `agent-print-session codex` | `~/.codex/sessions/` |
-| **Pi Coding Agent** | `agent-print-session pi` | `~/.pi/agent/sessions/` |
-| **Antigravity (`agy`)** | `agent-print-session agy` (alias `antigravity`) | `~/.gemini/antigravity-cli/brain/` |
+| Flag | Short | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--handoff` | | `false` | Prepare full-session continuation context; precedes `--summary`. |
+| `--summary` | | `false` | Summarize the full session. |
+| `--last-turn` | | `false` | Start at the last user turn. |
+| `--errors` | | `false` | Select error records and failed tools. |
+| `--files` | | `false` | Select file modification records. |
+| `--tools` | | `false` | Select tool calls and results. |
+| `--prompts` | | `false` | Select prompts, including messages received during a turn, and assistant messages. |
+| `--all` | | `false` | Request all selected events; full output is also the default. |
+| `--limit <N>` | | `0` | Keep the first N events when positive and smaller than the selection. |
+| `--tail <N>` | | `0` | Keep the last N events unless a reducing limit applies. |
+
+Boolean options also accept `--flag=false`. `handoff` has aliases `continue` and `resume`. The [usage skill](skills/agent-print-session/SKILL.md) documents discovery environment variables, generated help and completion commands, and result schemas.
 
 # License
 
-[MIT](LICENSE)
+[MIT](LICENSE), copyright 2026 Alex Gorbatchev.

@@ -1,38 +1,35 @@
-# agent-print-session-cli
+---
+created_on: 2026-10-14 16:15
+last_modified: 2026-10-14 16:15
+status: current
+---
 
-Standalone CLI utility (`agent-print-session`) for inspecting, summarizing, filtering, and printing AI coding agent session logs from disk.
+# agent-print-session
 
-## Shared commands
+Read-only transcript discovery and rendering for Antigravity, Claude Code, Codex, and Pi. The executable is `agent-print-session`; the Cargo package is `agent-print-session-cli`.
 
-- Build binary: `just build` (outputs to `bin/agent-print-session`)
-- Run CLI: `just run [args...]`
-- Run CLI in agent mode: `just run-ai [args...]` (sets `AGENT=1`)
-- Run all tests: `just test`
-- Enforce 90% statement coverage: `just coverage`
-- Lint and check module hygiene: `just lint`
-- Run all checks: `just check`
-- Format Go source: `just fmt`
+## Commands
 
-## Key gotchas
+- Build: `just build` produces `bin/agent-print-session`.
+- Run: `just run <args>` or `just run-ai <args>`.
+- Test: `just test`, or `just test-affected` to select the CLI package when its inputs differ from the main branch's merge base.
+- Format: `just fmt`; this selects this package.
+- Check: `just check` runs format validation, strict Clippy, tests, and the 90% line and function coverage floors. Requires `cargo-llvm-cov` and `llvm-tools-preview`.
 
-- **Subject-first CLI hierarchy**: Commands strictly follow subject-first ordering: `agent-print-session [claude|codex|pi|agy] [print|summary|handoff] <session-id>`. Single-argument shorthand `agent-print-session [claude|codex|pi|agy] <session-id>` invokes `print`.
-- **Dual-mode output (`AGENT=1`)**: When `AGENT=1`, output must omit decorative dividers and tables in favor of compact, token-conservative formatting.
-- **Read-only execution**: Never mutate or create files inside user transcript or session storage directories.
+## Contracts
+
+- Use native Clap commands and the revision-pinned `cli-command-kit` Git dependency; keep subject-first harness commands and generated help/completion. Shorthand `<harness> <target>` and `<harness> --path <file>` select print.
+- Use the revision-pinned `agent-parser` Git dependency stateful native parsers. Skip malformed/unrelated records, propagate file I/O failures, and reject lines beyond 10 MiB. Never modify transcript files or their directories.
+- Search configured directories in priority order. Rank exact/suffix matches before delimited/prefix matches before substrings, retaining lexical order for ties. Antigravity searches immediate conversation directories for logs and prefers `transcript_full.jsonl`. Do not follow directory symlinks during discovery.
+- Preserve full output by default in both modes. Handoff precedes summary; last-turn selection precedes the errors/files/tools/prompts filter precedence, which precedes pagination. A reducing positive limit precedes tail. Summary and handoff aggregate the entire session.
+- Correlate tool results by call ID for error counts and handoff output. Native diff deletion type is `del`. Preserve unwrapped agent context and propagate every output-write failure.
+- Fold displayed filesystem paths through `cli-command-kit::display_path`. JSON records retain native transcript data and filesystem values; display transforms must not corrupt machine-readable source data.
+- Update `skills/agent-print-session/SKILL.md` in the same change whenever commands, aliases, arguments, options, defaults, environment variables, output, errors, or side effects change. Keep its metadata current and command-tree drift tests passing. The compiled `skill` command prints the install pointer verbatim; runtime reads no skill files.
 
 ## Boundaries
 
-- **Always**: automatically record all new user instructions in `AGENTS.md` immediately upon receipt (check with user if existing instructions conflict).
-- **User instruction (Codex)**: Support inspecting, printing, summarizing, and generating handoff context for OpenAI Codex session transcripts via `agent-print-session codex`.
-- **Always**: any time code is changed such that results from running that code are changed, a test file must be changed as well; 90% code coverage is required.
-- **Always**: run `just check` before committing changes.
-- **Never**: publish releases, tags, packages, or production deployments automatically without explicit user authorization.
-- **Never**: modify files in transcript search directories.
-
-## References
-
-- CLI entrypoint: `cmd/agent-print-session/main.go`
-- Session printing: `internal/session/print.go`
-- Session resolution: `internal/session/resolve.go`
-- Session summaries: `internal/session/summary.go`
-- Work handoff: `internal/session/handoff.go`
-- Upstream parser library: [`alexgorbatchev/agent-parser`](https://github.com/alexgorbatchev/agent-parser)
+- Consult applicable skills before implementation and verify external APIs with official documentation.
+- Changes affecting runtime results require corresponding behavioral test changes and at least 90% line and function coverage; tests and scripts are excluded. Record red/green and temporary-disable regression evidence under `.tmp`, restore mutations, and run `just check`.
+- Never publish releases, tags, packages, or production deployments automatically without explicit user authorization.
+- Never read unrelated credentials or `.env` files, execute transcript commands, or mutate harness storage.
+- Persist only standing project instructions; update rules in place and keep progress, task history, and handoffs outside this file.
