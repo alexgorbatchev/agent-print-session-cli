@@ -23,7 +23,7 @@ test-affected base="origin/main":
     files=$(git diff --name-only "$base" --; git ls-files --others --exclude-standard)
     while IFS= read -r file; do
         case "$file" in
-            ""|AGENTS.md|README.md|docs/*|LICENSE|go-upstream.json) ;;
+            ""|AGENTS.md|README.md|docs/*|LICENSE) ;;
             *)
                 echo 'Selected agent-print-session-cli: package or test inputs changed.'
                 just test
