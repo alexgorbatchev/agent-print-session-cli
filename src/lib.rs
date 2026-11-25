@@ -6,6 +6,7 @@ pub mod transcript;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Harness {
+    Agy,
     Claude,
     Codex,
     Pi,

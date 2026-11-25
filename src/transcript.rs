@@ -1,10 +1,11 @@
 use crate::Harness;
-use agent_parser::{ClaudeCodeParser, CodexParser, ParsedEvent, parse_pi_line};
+use agent_parser::{AgyParser, ClaudeCodeParser, CodexParser, ParsedEvent, parse_pi_line};
 use std::io::{self, BufRead, Read};
 
 const MAX_LINE: u64 = 10 * 1024 * 1024;
 
 pub fn load(mut reader: impl BufRead, harness: Harness) -> io::Result<Vec<ParsedEvent>> {
+    let mut agy = AgyParser::new();
     let mut claude = ClaudeCodeParser::new();
     let mut codex = CodexParser::new();
     let mut events = Vec::new();
@@ -34,6 +35,7 @@ pub fn load(mut reader: impl BufRead, harness: Harness) -> io::Result<Vec<Parsed
             continue;
         }
         let parsed = match harness {
+            Harness::Agy => agy.parse_line(&line),
             Harness::Claude => claude.parse_line(&line),
             Harness::Codex => codex.parse_line(&line),
             Harness::Pi => parse_pi_line(&line, ""),
@@ -77,7 +79,7 @@ pub fn select<'a>(events: &'a [ParsedEvent], options: &Selection) -> Vec<&'a Par
             } else if options.tools {
                 matches!(e.event_type.as_str(), "tool_call" | "tool_result")
             } else if options.prompts {
-                e.event_type == "turn_start"
+                matches!(e.event_type.as_str(), "turn_start" | "message_absorbed")
                     || (matches!(e.event_type.as_str(), "turn_end" | "agent_message")
                         && e.data.content.as_deref().is_some_and(|s| !s.is_empty()))
             } else {

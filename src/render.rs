@@ -1,6 +1,8 @@
 use crate::{
     Error,
-    aggregate::{ErrorRecord, FileChange, Handoff, Summary, duration, prompt, text, tool},
+    aggregate::{
+        ErrorRecord, FileChange, Handoff, Summary, displayed_prompt, duration, text, tool,
+    },
 };
 use agent_parser::{DiffHunk, ParsedEvent};
 use cli_command_kit::{Mode, display_path};
@@ -13,6 +15,13 @@ pub fn json(out: &mut dyn Write, value: &impl serde::Serialize) -> Result<(), Er
 }
 fn path(value: &str) -> String {
     display_path(Path::new(value))
+}
+fn modification_path(previous: &str, current: &str) -> String {
+    if previous.is_empty() {
+        path(current)
+    } else {
+        format!("{} -> {}", path(previous), path(current))
+    }
 }
 fn separator(out: &mut dyn Write, width: usize) -> std::io::Result<()> {
     writeln!(out, "{}", "-".repeat(width))
@@ -122,7 +131,9 @@ pub fn transcript(
     optional(out, if agent { "BRANCH: " } else { "Branch: " }, branch)?;
     optional(out, if agent { "CWD: " } else { "CWD:    " }, &path(cwd))?;
     if !agent {
-        separator(out, width)?;
+        if !title.is_empty() || !branch.is_empty() || !cwd.is_empty() {
+            separator(out, width)?;
+        }
         writeln!(out)?;
     }
     for event in events {
@@ -151,15 +162,15 @@ fn render_event(
 ) -> Result<(), Error> {
     let data = &event.data;
     match event.event_type.as_str() {
-        "turn_start" => {
-            let content = prompt(event);
-            let content = if content.is_empty() {
-                text(&data.content).trim()
-            } else {
-                &content
-            };
+        "turn_start" | "message_absorbed" => {
+            let content = displayed_prompt(event);
             if !content.is_empty() {
-                block(out, "USER", content, agent, width)?;
+                let label = if data.role.as_deref() == Some("agent") {
+                    "AGENT"
+                } else {
+                    "USER"
+                };
+                block(out, label, &content, agent, width)?;
             }
         }
         "turn_end" | "agent_message" => {
@@ -190,7 +201,7 @@ fn render_event(
                     "{}{} {}",
                     if agent { "Action: " } else { "    " },
                     fm.action,
-                    path(&fm.file_path)
+                    modification_path(&fm.previous_path, &fm.file_path)
                 )?;
                 let formatted = diff(&fm.hunks);
                 if !formatted.is_empty() {
@@ -204,13 +215,12 @@ fn render_event(
                         }
                     )?;
                 }
-            } else if let Some(value) = data
-                .tool_input
-                .as_ref()
-                .and_then(|m| m.get("path"))
-                .and_then(serde_json::Value::as_str)
-                .filter(|s| !s.is_empty())
-            {
+            } else if let Some(value) = data.tool_input.as_ref().and_then(|input| {
+                ["path", "Path", "AbsolutePath", "TargetFile"]
+                    .into_iter()
+                    .filter_map(|key| input.get(key).and_then(serde_json::Value::as_str))
+                    .find(|value| !value.is_empty())
+            }) {
                 writeln!(
                     out,
                     "{}Path: {}",
@@ -252,7 +262,7 @@ fn render_event(
                     "{}{} {} (hunks: {})",
                     if agent { "\nFILE MOD: " } else { "[FILE MOD] " },
                     fm.action,
-                    path(&fm.file_path),
+                    modification_path(&fm.previous_path, &fm.file_path),
                     fm.hunks.len()
                 )?;
                 let formatted = diff(&fm.hunks);
@@ -309,7 +319,7 @@ fn files(
                 out,
                 "* {} {} (hunks: {})",
                 file.action,
-                path(&file.file_path),
+                modification_path(&file.previous_path, &file.file_path),
                 file.hunks
             )?;
         } else {
@@ -317,7 +327,7 @@ fn files(
                 out,
                 "  - [{}] {} ({} hunks)",
                 file.action,
-                path(&file.file_path),
+                modification_path(&file.previous_path, &file.file_path),
                 file.hunks
             )?;
         }

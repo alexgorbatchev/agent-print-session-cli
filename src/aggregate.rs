@@ -13,6 +13,8 @@ pub struct ToolUsage {
 #[serde(rename_all = "camelCase")]
 pub struct FileChange {
     pub file_path: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub previous_path: String,
     pub action: String,
     pub hunks: usize,
 }
@@ -105,14 +107,26 @@ pub(crate) fn tool(event: &ParsedEvent) -> &str {
         .filter(|s| !s.is_empty())
         .unwrap_or("unknown")
 }
-pub(crate) fn prompt(event: &ParsedEvent) -> String {
-    let raw = event
+pub(crate) fn raw_prompt(event: &ParsedEvent) -> &str {
+    event
         .data
         .content
         .as_deref()
         .or(event.data.last_prompt.as_deref())
-        .unwrap_or("");
-    clean_claude_code_prompt(raw).trim().to_owned()
+        .unwrap_or("")
+}
+pub(crate) fn prompt(event: &ParsedEvent) -> String {
+    clean_claude_code_prompt(raw_prompt(event))
+        .trim()
+        .to_owned()
+}
+pub(crate) fn displayed_prompt(event: &ParsedEvent) -> String {
+    let cleaned = prompt(event);
+    if cleaned.is_empty() {
+        raw_prompt(event).trim().into()
+    } else {
+        cleaned
+    }
 }
 fn analyze(path: &str, events: &[ParsedEvent]) -> (Summary, Handoff) {
     let mut s = Summary {
@@ -127,7 +141,7 @@ fn analyze(path: &str, events: &[ParsedEvent]) -> (Summary, Handoff) {
     };
     let mut models = BTreeSet::new();
     let mut tools: BTreeMap<String, ToolUsage> = BTreeMap::new();
-    let mut files: BTreeMap<(String, String), FileChange> = BTreeMap::new();
+    let mut files: BTreeMap<_, FileChange> = BTreeMap::new();
     let mut calls = BTreeMap::new();
     for event in events {
         let data = &event.data;
@@ -149,6 +163,26 @@ fn analyze(path: &str, events: &[ParsedEvent]) -> (Summary, Handoff) {
         if !text(&data.model).is_empty() {
             models.insert(text(&data.model).to_owned());
         }
+        if let Some(usage) = &data.usage {
+            s.tokens_in = s.tokens_in.saturating_add(usage.input);
+            s.tokens_out = s.tokens_out.saturating_add(usage.output);
+            s.tokens_cache = s.tokens_cache.saturating_add(usage.cache_read);
+            s.tokens_total = s.tokens_total.saturating_add(usage.total);
+        }
+        if let Some(change) = &data.file_modification {
+            let key = (
+                change.file_path.as_str(),
+                change.action.as_str(),
+                change.previous_path.as_str(),
+            );
+            let stats = files.entry(key).or_insert_with(|| FileChange {
+                file_path: change.file_path.clone(),
+                previous_path: change.previous_path.clone(),
+                action: change.action.clone(),
+                hunks: 0,
+            });
+            stats.hunks += change.hunks.len();
+        }
         match event.event_type.as_str() {
             "turn_start" => {
                 s.turn_count += 1;
@@ -158,6 +192,12 @@ fn analyze(path: &str, events: &[ParsedEvent]) -> (Summary, Handoff) {
                         h.initial_objective = cleaned.clone();
                     }
                     h.latest_user_prompt = cleaned;
+                }
+            }
+            "message_absorbed" if data.role.as_deref() == Some("user") => {
+                let content = displayed_prompt(event);
+                if !content.is_empty() {
+                    h.latest_user_prompt = content;
                 }
             }
             "tool_call" => {
@@ -188,15 +228,6 @@ fn analyze(path: &str, events: &[ParsedEvent]) -> (Summary, Handoff) {
                     status: "OK".into(),
                     ..Default::default()
                 });
-                if let Some(fm) = &data.file_modification {
-                    let key = (fm.file_path.clone(), fm.action.clone());
-                    let stats = files.entry(key).or_insert_with(|| FileChange {
-                        file_path: fm.file_path.clone(),
-                        action: fm.action.clone(),
-                        hunks: 0,
-                    });
-                    stats.hunks += fm.hunks.len();
-                }
             }
             "tool_result" => {
                 let call = text(&data.tool_call_id);
@@ -234,12 +265,6 @@ fn analyze(path: &str, events: &[ParsedEvent]) -> (Summary, Handoff) {
                     h.final_assistant_message = text(&data.content).trim().into();
                 }
                 if event.event_type == "turn_end" {
-                    if let Some(u) = &data.usage {
-                        s.tokens_in = s.tokens_in.saturating_add(u.input);
-                        s.tokens_out = s.tokens_out.saturating_add(u.output);
-                        s.tokens_cache = s.tokens_cache.saturating_add(u.cache_read);
-                        s.tokens_total = s.tokens_total.saturating_add(u.total);
-                    }
                     s.cost_usd += data.raw_harness_cost.unwrap_or(0.0);
                 }
             }

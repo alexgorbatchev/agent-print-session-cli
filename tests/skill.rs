@@ -20,4 +20,4 @@ fn canonical_usage_skill_covers_the_live_native_command_tree() {
     );
 }
 
-const INSTALL_TEXT: &str = "Install the agent-print-session skill using the Skills CLI:\n\n  npx skills add alexgorbatchev/agent-print-session-cli --skill agent-print-session\n\nSkill:\n\n  https://github.com/alexgorbatchev/agent-print-session-cli/tree/main/skills/agent-print-session\n";
+const INSTALL_TEXT: &str = "Install the agent-print-session skill using the Skills CLI:\n\n  npx skills add alexgorbatchev/agent-print-session-cli-rust --skill agent-print-session\n\nSkill:\n\n  https://github.com/alexgorbatchev/agent-print-session-cli-rust/tree/main/skills/agent-print-session\n";

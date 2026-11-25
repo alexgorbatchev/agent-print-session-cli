@@ -112,6 +112,64 @@ fn transcript_has_native_deletions_and_complete_conversation_in_both_modes() {
             assert!(result.contains("[TOOL ERROR]"));
         }
     }
+    let without_metadata =
+        output(|out| render::transcript(out, "log", &[], Mode::Human, 64).unwrap());
+    let divider = "-".repeat(64);
+    assert_eq!(
+        without_metadata
+            .lines()
+            .filter(|line| *line == divider)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn renderers_show_mid_turn_roles_and_moved_paths_in_both_modes() {
+    let home = dirs::home_dir().unwrap();
+    let before = home.join("old.txt");
+    let after = home.join("new.txt");
+    let moved = json!({"filePath": after, "previousPath": before, "action":"EDIT"});
+    let events = vec![
+        event("turn_start", json!({"content":"Move the notes."})),
+        event(
+            "message_absorbed",
+            json!({"role":"user","content":"Check the tests, too."}),
+        ),
+        event(
+            "message_absorbed",
+            json!({"role":"agent","content":"Tests are running."}),
+        ),
+        event("file_modification", json!({"fileModification":moved})),
+        event(
+            "tool_call",
+            json!({"toolName":"Edit","fileModification":moved}),
+        ),
+    ];
+    let refs = events.iter().collect::<Vec<_>>();
+    for mode in [Mode::Agent, Mode::Human] {
+        let transcript = output(|out| render::transcript(out, "log", &refs, mode, 80).unwrap());
+        match mode {
+            Mode::Agent => {
+                assert!(transcript.contains("USER:\nCheck the tests, too."));
+                assert!(transcript.contains("AGENT:\nTests are running."));
+            }
+            Mode::Human => {
+                assert!(transcript.contains("[USER]\n    Check the tests, too."));
+                assert!(transcript.contains("[AGENT]\n    Tests are running."));
+            }
+        }
+        let moved = "EDIT ~/old.txt -> ~/new.txt";
+        let moved_paths = moved.trim_start_matches("EDIT ");
+        assert_eq!(transcript.matches(moved).count(), 2);
+        let summary = Summary::compute("log", &events);
+        let rendered_summary = output(|out| render::summary(out, &summary, mode, 80).unwrap());
+        assert!(rendered_summary.contains(moved_paths));
+        let handoff = Handoff::compute("log", &events, 5);
+        let rendered_handoff = output(|out| render::handoff(out, &handoff, mode, 80).unwrap());
+        assert!(rendered_handoff.contains(moved_paths));
+        assert!(rendered_handoff.contains("Check the tests, too."));
+    }
 }
 
 #[test]
@@ -124,7 +182,14 @@ fn summary_and_context_render_all_sections_and_keep_unwrapped_agent_text() {
     assert_eq!(s.tokens_cache, 3);
     assert_eq!(s.tokens_total, 6);
     assert_eq!(s.cost_usd, 0.25);
-    assert_eq!(s.files_modified[0].hunks, 2);
+    assert_eq!(
+        s.files_modified
+            .iter()
+            .find(|file| file.file_path == "/repo/src.rs")
+            .unwrap()
+            .hunks,
+        2
+    );
     assert_eq!(s.title, "Test");
     assert_eq!(s.exit_code, Some(7));
     let mut h = Handoff::compute("log", &events, 100);

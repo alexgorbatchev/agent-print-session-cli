@@ -16,13 +16,16 @@ use std::{
 pub fn help_options() -> HelpOptions {
     HelpOptions {
         skill: Some(
-            cli_command_kit::SkillSource::new("alexgorbatchev/agent-print-session-cli", "main")
-                .expect("the fixed skill source names a GitHub repository"),
+            cli_command_kit::SkillSource::new(
+                "alexgorbatchev/agent-print-session-cli-rust",
+                "main",
+            )
+            .expect("the fixed skill source names a GitHub repository"),
         ),
         ..Default::default()
     }
 }
-fn common(command: Command, required: bool) -> Command {
+fn common(command: Command, required: bool, path_help: &'static str) -> Command {
     let target = Arg::new("target").value_name("session-id-or-path");
     let target = if required {
         target.required_unless_present("path")
@@ -36,7 +39,7 @@ fn common(command: Command, required: bool) -> Command {
                 .long("path")
                 .value_name("path")
                 .value_parser(clap::builder::NonEmptyStringValueParser::new())
-                .help("Direct transcript file path; overrides target"),
+                .help(path_help),
         )
         .arg(
             Arg::new("json")
@@ -61,7 +64,7 @@ fn print_flags(mut command: Command) -> Command {
         ("errors", "Select errors and failed tools"),
         ("files", "Select file modifications"),
         ("tools", "Select tool calls and results"),
-        ("prompts", "Select user and assistant messages"),
+        ("prompts", "Select prompts and assistant messages"),
         ("all", "Output all selected events (also the default)"),
     ] {
         command = command.arg(
@@ -109,20 +112,33 @@ pub fn command(mode: Mode) -> Command {
         )
         .about("Print and inspect local AI coding agent session logs");
     for (name, description) in [
+        ("agy", "Inspect Antigravity transcripts"),
         ("claude", "Inspect Claude Code transcripts"),
         ("codex", "Inspect Codex transcripts"),
         ("pi", "Inspect Pi transcripts"),
     ] {
-        let mut harness = print_flags(common(Command::new(name).about(description), false))
-            .subcommand_precedence_over_arg(true)
-            .args_conflicts_with_subcommands(true);
+        let path_help = if name == "agy" {
+            "Transcript file or conversation directory; overrides target"
+        } else {
+            "Direct transcript file path; overrides target"
+        };
+        let mut harness = print_flags(common(
+            Command::new(name).about(description),
+            false,
+            path_help,
+        ))
+        .subcommand_precedence_over_arg(true)
+        .args_conflicts_with_subcommands(true);
+        if name == "agy" {
+            harness = harness.visible_alias("antigravity");
+        }
         // Shorthand targets are optional, whereas explicit verbs need a target or --path.
         for (verb, about) in [
             ("print", "Print transcript events"),
             ("summary", "Aggregate session metrics"),
             ("handoff", "Build continuation context"),
         ] {
-            let mut child = common(Command::new(verb).about(about), true);
+            let mut child = common(Command::new(verb).about(about), true, path_help);
             if verb == "print" {
                 child = print_flags(child);
             }
@@ -199,6 +215,7 @@ pub fn run(
         return Ok(());
     }
     let harness = match name {
+        "agy" => Harness::Agy,
         "claude" => Harness::Claude,
         "codex" => Harness::Codex,
         _ => Harness::Pi,
@@ -239,10 +256,14 @@ fn execute(
     let target = explicit
         .or(matches.get_one::<String>("target"))
         .expect("target validated");
-    let path = if explicit.is_some() {
-        Path::new(target).to_path_buf()
-    } else {
-        resolve::resolve_in(target, &resolve::directories(harness))?
+    let path = match (harness, explicit) {
+        (Harness::Agy, Some(path)) => {
+            let path = Path::new(path);
+            resolve::agy_path(path).ok_or_else(|| Error::NotFound(target.into()))?
+        }
+        (_, Some(path)) => Path::new(path).to_path_buf(),
+        (Harness::Agy, None) => resolve::resolve_agy(target, &resolve::directories(harness))?,
+        (_, None) => resolve::resolve_in(target, &resolve::directories(harness))?,
     };
     let file = File::open(&path).map_err(|error| {
         std::io::Error::new(

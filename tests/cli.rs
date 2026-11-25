@@ -12,6 +12,13 @@ const CLAUDE: &str = concat!(
     "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"Hello world\"},\"uuid\":\"u-1\",\"sessionId\":\"cli-test\",\"timestamp\":\"2026-09-20T12:00:00Z\"}\n",
     "{\"type\":\"assistant\",\"message\":{\"id\":\"m1\",\"role\":\"assistant\",\"model\":\"claude\",\"content\":[{\"type\":\"text\",\"text\":\"Done\"}],\"usage\":{\"input_tokens\":10,\"output_tokens\":12}},\"uuid\":\"a-1\",\"sessionId\":\"cli-test\",\"timestamp\":\"2026-09-20T12:00:01Z\"}\n"
 );
+const AGY: &str = r#"{"step_index":0,"type":"USER_INPUT","created_at":"2026-11-22T14:38:26Z","content":"Read the release notes."}
+{"step_index":1,"type":"PLANNER_RESPONSE","created_at":"2026-11-22T14:38:27Z","model":"gemini-2.5-pro","tool_calls":[{"id":"read-1","name":"view_file","args":{"AbsolutePath":"/repo/RELEASE.md"}},{"id":"read-2","name":"view_file","args":{"TargetFile":"/repo/MISSING.md"}}]}
+{"step_index":2,"type":"GENERIC","created_at":"2026-11-22T14:38:28Z","status":"DONE","content":"Release 1.0 is ready."}
+{"step_index":3,"type":"GENERIC","created_at":"2026-11-22T14:38:29Z","status":"ERROR","error":"File missing."}
+{"step_index":4,"type":"PLANNER_RESPONSE","created_at":"2026-11-22T14:38:30Z","model":"gemini-2.5-pro","content":"The notes are ready for release.","status":"DONE","input_tokens":100,"output_tokens":20}
+"#;
+
 fn run(args: &[&str], mode: Mode) -> Result<String, agent_print_session_cli::Error> {
     let mut output = Vec::new();
     cli::run(
@@ -25,7 +32,7 @@ fn run(args: &[&str], mode: Mode) -> Result<String, agent_print_session_cli::Err
 fn command_tree_native_help_version_completion_and_skill_contracts() {
     cli::command(Mode::Human).debug_assert();
     for mode in [Mode::Human, Mode::Agent] {
-        for harness in ["claude", "pi", "codex"] {
+        for harness in ["agy", "claude", "pi", "codex"] {
             assert!(run(&[harness], mode).unwrap().contains("handoff"));
             for verb in ["print", "summary", "handoff", "continue", "resume"] {
                 let text = run(&[harness, verb, "--help"], mode).unwrap();
@@ -94,7 +101,7 @@ fn native_cli_all_harnesses_filters_formats_aliases_and_path_shorthand() {
     let path = dir.path().join("session.jsonl");
     fs::write(&path, CLAUDE).unwrap();
     let path = path.to_str().unwrap();
-    for harness in ["claude", "codex", "pi"] {
+    for harness in ["agy", "claude", "codex", "pi"] {
         for mode in [Mode::Human, Mode::Agent] {
             for verb in ["print", "summary", "handoff", "continue", "resume"] {
                 assert!(!run(&[harness, verb, path], mode).unwrap().is_empty());
@@ -144,6 +151,90 @@ fn native_cli_all_harnesses_filters_formats_aliases_and_path_shorthand() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn antigravity_reads_native_transcripts_and_resolves_conversations() {
+    let dir = support::temporary_directory();
+    let root = dir.path();
+    let custom = root.join("custom");
+    let gemini = root.join("gemini");
+    let home = root.join("home");
+    let gemini_brain = gemini.join("antigravity-cli/brain");
+    let home_brain = home.join(".gemini/antigravity-cli/brain");
+    let create_transcript = |brain: &std::path::Path, id: &str, name: &str| {
+        let logs = brain.join(id).join(".system_generated/logs");
+        fs::create_dir_all(&logs).unwrap();
+        let file = logs.join(name);
+        fs::write(&file, AGY).unwrap();
+        file
+    };
+    let bad_match = create_transcript(&custom, "a-conversation", "transcript.jsonl");
+    let prefix = create_transcript(&custom, "conversation-prefix", "transcript.jsonl");
+    let exact = create_transcript(&custom, "conversation", "transcript_full.jsonl");
+    let fallback = create_transcript(&custom, "conversation", "transcript.jsonl");
+    fs::write(
+        &fallback,
+        AGY.replace("Read the release notes.", "Read the partial log."),
+    )
+    .unwrap();
+    fs::create_dir_all(custom.join("a-conversation-prefix")).unwrap();
+    let gemini_log = create_transcript(&gemini_brain, "conversation", "transcript_full.jsonl");
+    let home_log = create_transcript(&home_brain, "home-id", "transcript.jsonl");
+    let direct_dir = root.join("direct");
+    fs::create_dir(&direct_dir).unwrap();
+    let direct = direct_dir.join("transcript.jsonl");
+    fs::write(&direct, AGY).unwrap();
+    let invoke = |args: &[&str], custom_dir: &std::path::Path| {
+        Command::new(env!("CARGO_BIN_EXE_agent-print-session"))
+            .env("HOME", &home)
+            .env("USERPROFILE", &home)
+            .env("AGENT", "1")
+            .env("AGY_SESSIONS_DIR", custom_dir)
+            .env("GEMINI_HOME", &gemini)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    for (target, directory, expected) in [
+        ("conversation", custom.as_path(), &exact),
+        ("conversation-pre", custom.as_path(), &prefix),
+        ("a-conver", custom.as_path(), &bad_match),
+        ("versation.jsonl", custom.as_path(), &bad_match),
+        ("conversation", direct_dir.as_path(), &gemini_log),
+        ("home-id", custom.as_path(), &home_log),
+    ] {
+        let output = invoke(&["agy", "summary", "--json", target], directory);
+        assert!(
+            output.status.success(),
+            "{target}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let summary: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(summary["filePath"], expected.to_str().unwrap(), "{target}");
+        assert_eq!(summary["tokensTotal"], 120);
+        assert_eq!(summary["tools"][0]["calls"], 2);
+        assert_eq!(summary["tools"][0]["errorCalls"], 1);
+    }
+    let output = invoke(&["agy", "missing-session-unique"], &custom);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missing-session-unique"));
+    for mode in [Mode::Human, Mode::Agent] {
+        let text = run(
+            &["antigravity", "--path", direct_dir.to_str().unwrap()],
+            mode,
+        )
+        .unwrap();
+        assert!(text.contains("Read the release notes."));
+        assert!(text.contains("Path: /repo/RELEASE.md"));
+        assert!(text.contains("Path: /repo/MISSING.md"));
+        assert!(text.contains("The notes are ready for release."));
+        let events = run(&["agy", "print", "--json", direct.to_str().unwrap()], mode).unwrap();
+        let events: serde_json::Value = serde_json::from_str(&events).unwrap();
+        assert_eq!(events[0]["eventType"], "turn_start");
+        let handoff = run(&["agy", "resume", exact.to_str().unwrap()], mode).unwrap();
+        assert!(handoff.contains("File missing."));
+    }
 }
 struct Broken;
 impl Write for Broken {
@@ -222,4 +313,4 @@ fn real_binary_discovers_env_paths_folds_home_and_reports_runtime_error_once() {
     assert!(output.status.success());
 }
 
-const INSTALL_TEXT: &str = "Install the agent-print-session skill using the Skills CLI:\n\n  npx skills add alexgorbatchev/agent-print-session-cli --skill agent-print-session\n\nSkill:\n\n  https://github.com/alexgorbatchev/agent-print-session-cli/tree/main/skills/agent-print-session\n";
+const INSTALL_TEXT: &str = "Install the agent-print-session skill using the Skills CLI:\n\n  npx skills add alexgorbatchev/agent-print-session-cli-rust --skill agent-print-session\n\nSkill:\n\n  https://github.com/alexgorbatchev/agent-print-session-cli-rust/tree/main/skills/agent-print-session\n";

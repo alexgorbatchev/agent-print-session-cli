@@ -6,21 +6,21 @@ status: current
 
 # agent-print-session
 
-Read-only transcript discovery and rendering for Claude Code, Codex, and Pi. The executable is `agent-print-session`; the Cargo package is `agent-print-session-cli`.
+Read-only transcript discovery and rendering for Antigravity, Claude Code, Codex, and Pi. The executable is `agent-print-session`; the Cargo package is `agent-print-session-cli`.
 
 ## Commands
 
 - Build: `just build` produces `bin/agent-print-session`.
 - Run: `just run <args>` or `just run-ai <args>`.
-- Test: `just test`.
+- Test: `just test`, or `just test-affected` to select the CLI package when its inputs differ from the main branch's merge base.
 - Format: `just fmt`; this selects this package.
-- Check: `just check` runs format validation, strict Clippy, tests, and the 90% line coverage floor. Requires `cargo-llvm-cov` and `llvm-tools-preview`.
+- Check: `just check` runs format validation, strict Clippy, tests, and the 90% line and function coverage floors. Requires `cargo-llvm-cov` and `llvm-tools-preview`.
 
 ## Contracts
 
 - Use native Clap commands and the revision-pinned `cli-command-kit` Git dependency; keep subject-first harness commands and generated help/completion. Shorthand `<harness> <target>` and `<harness> --path <file>` select print.
 - Use the revision-pinned `agent-parser` Git dependency stateful native parsers. Skip malformed/unrelated records, propagate file I/O failures, and reject lines beyond 10 MiB. Never modify transcript files or their directories.
-- Search each configured directory recursively in priority order. Rank exact/suffix matches before delimited/prefix matches before substrings, retaining lexical order for ties. Do not follow directory symlinks.
+- Search configured directories in priority order. Rank exact/suffix matches before delimited/prefix matches before substrings, retaining lexical order for ties. Antigravity searches immediate conversation directories for logs and prefers `transcript_full.jsonl`. Do not follow directory symlinks during discovery.
 - Preserve full output by default in both modes. Handoff precedes summary; last-turn selection precedes the errors/files/tools/prompts filter precedence, which precedes pagination. A reducing positive limit precedes tail. Summary and handoff aggregate the entire session.
 - Correlate tool results by call ID for error counts and handoff output. Native diff deletion type is `del`. Preserve unwrapped agent context and propagate every output-write failure.
 - Fold displayed filesystem paths through `cli-command-kit::display_path`. JSON records retain native transcript data and filesystem values; display transforms must not corrupt machine-readable source data.
@@ -29,7 +29,7 @@ Read-only transcript discovery and rendering for Claude Code, Codex, and Pi. The
 ## Boundaries
 
 - Consult applicable skills before implementation and verify external APIs with official documentation.
-- Changes affecting runtime results require corresponding behavioral test changes and at least 90% line coverage; scripts are excluded. Record red/green and temporary-disable regression evidence under `.tmp`, restore mutations, and run `just check`.
+- Changes affecting runtime results require corresponding behavioral test changes and at least 90% line and function coverage; tests and scripts are excluded. Record red/green and temporary-disable regression evidence under `.tmp`, restore mutations, and run `just check`.
 - Never publish releases, tags, packages, or production deployments automatically without explicit user authorization.
 - Never read unrelated credentials or `.env` files, execute transcript commands, or mutate harness storage.
 - Persist only standing project instructions; update rules in place and keep progress, task history, and handoffs outside this file.

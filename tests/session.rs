@@ -46,6 +46,81 @@ fn summaries_correlate_errors_and_handoff_keeps_full_output() {
 }
 
 #[test]
+fn mid_turn_prompts_and_moved_files_remain_visible_and_structured() {
+    let events = vec![
+        event("turn_start", json!({"content":"Start the task."})),
+        event(
+            "message_absorbed",
+            json!({"role":"user","content":"Include the tests."}),
+        ),
+        event(
+            "message_absorbed",
+            json!({"role":"agent","content":"Tests are available."}),
+        ),
+        event("message_absorbed", json!({"role":"user","content":"  "})),
+        event(
+            "file_modification",
+            json!({"fileModification":{"filePath":"new.txt","previousPath":"old.txt","action":"EDIT","hunks":[{}]}}),
+        ),
+        event(
+            "tool_call",
+            json!({"fileModification":{"filePath":"new.txt","previousPath":"old.txt","action":"EDIT","hunks":[{}]}}),
+        ),
+        event(
+            "file_modification",
+            json!({"fileModification":{"filePath":"new.txt","previousPath":"another.txt","action":"EDIT"}}),
+        ),
+        event(
+            "usage",
+            json!({"usage":{"input":3,"output":4,"cacheRead":2,"total":7}}),
+        ),
+        event("agent_message", json!({"content":"Done."})),
+    ];
+    let options = Selection {
+        prompts: true,
+        last_turn: true,
+        ..Default::default()
+    };
+    let selected = select(&events, &options);
+    assert_eq!(
+        selected
+            .iter()
+            .map(|event| event.event_type.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "turn_start",
+            "message_absorbed",
+            "message_absorbed",
+            "message_absorbed",
+            "agent_message"
+        ]
+    );
+    let summary = serde_json::to_value(Summary::compute("log", &events)).unwrap();
+    assert_eq!(summary["turnCount"], 1);
+    assert_eq!(summary["tokensIn"], 3);
+    assert_eq!(summary["tokensOut"], 4);
+    assert_eq!(summary["tokensCache"], 2);
+    assert_eq!(summary["tokensTotal"], 7);
+    let files = summary["filesModified"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    let moved = files
+        .iter()
+        .find(|file| file["previousPath"] == "old.txt")
+        .unwrap();
+    assert_eq!(
+        moved,
+        &json!({"filePath":"new.txt","previousPath":"old.txt","action":"EDIT","hunks":2})
+    );
+    let handoff = Handoff::compute("log", &events, 5);
+    assert_eq!(handoff.initial_objective, "Start the task.");
+    assert_eq!(handoff.latest_user_prompt, "Include the tests.");
+    assert_eq!(
+        serde_json::to_value(handoff).unwrap()["filesModified"],
+        summary["filesModified"]
+    );
+}
+
+#[test]
 fn directory_priority_and_match_specificity_are_deterministic() {
     let dir = support::temporary_directory();
     let a = dir.path().join("a");
@@ -119,8 +194,13 @@ fn filters_apply_before_pagination_and_last_turn() {
 }
 
 #[test]
-fn native_parsers_read_all_three_transcript_formats() {
+fn native_parsers_read_all_supported_transcript_formats() {
     for (harness, line, expected) in [
+        (
+            Harness::Agy,
+            r#"{"step_index":0,"type":"USER_INPUT","created_at":"2026-11-22T14:38:26Z","content":"hello antigravity"}"#,
+            "hello antigravity",
+        ),
         (
             Harness::Claude,
             r#"{"type":"user","message":{"role":"user","content":"hello claude"},"timestamp":"2026-09-20T12:00:00Z"}"#,
@@ -133,7 +213,7 @@ fn native_parsers_read_all_three_transcript_formats() {
         ),
         (
             Harness::Codex,
-            r#"{"type":"event_msg","timestamp":"2026-06-12T16:08:38Z","payload":{"type":"user_message","message":"hello codex"}}"#,
+            r#"{"type":"response_item","timestamp":"2026-06-12T16:08:38Z","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello codex"}]}}"#,
             "hello codex",
         ),
     ] {
@@ -148,4 +228,27 @@ fn native_parsers_read_all_three_transcript_formats() {
     }
     assert!(load(Cursor::new(vec![b'x'; 10 * 1024 * 1024 + 1]), Harness::Pi).is_err());
     let _ = EventData::default();
+}
+
+#[test]
+fn codex_native_turns_preserve_absorbed_prompts_and_each_confirmed_move() {
+    let fixture = concat!(
+        "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\"}}\n",
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Rename the file.\"}]}}\n",
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Add a note, too.\"}]}}\n",
+        "{\"type\":\"event_msg\",\"payload\":{\"type\":\"patch_apply_end\",\"call_id\":\"patch\",\"changes\":{\"old.txt\":{\"type\":\"update\",\"move_path\":\"new.txt\",\"unified_diff\":\"@@ -1 +1 @@\\n-Old\\n+New\"},\"note.txt\":{\"type\":\"add\",\"content\":\"Release notes\"}},\"success\":true}}\n",
+        "{\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"last_agent_message\":\"Done.\"}}\n",
+    );
+    let events = load(Cursor::new(fixture), Harness::Codex).unwrap();
+    let handoff = Handoff::compute("log", &events, 5);
+    assert_eq!(handoff.turn_count, 1);
+    assert_eq!(handoff.initial_objective, "Rename the file.");
+    assert_eq!(handoff.latest_user_prompt, "Add a note, too.");
+    assert_eq!(handoff.final_assistant_message, "Done.");
+    assert_eq!(handoff.files_modified.len(), 2);
+    let moved = &handoff.files_modified[0];
+    assert_eq!(moved.file_path, "new.txt");
+    assert_eq!(moved.previous_path, "old.txt");
+    assert_eq!(moved.hunks, 1);
+    assert_eq!(handoff.files_modified[1].file_path, "note.txt");
 }
