@@ -1,7 +1,5 @@
 `agent-print-session` helps developers and coding agents read local Antigravity, Claude Code, Codex, and Pi session logs, summarize activity, and prepare continuation context.
 
-The Go implementation is deprecated. See the [`go-legacy` branch](https://github.com/alexgorbatchev/agent-print-session-cli/tree/go-legacy) for its source. Existing Go release tags remain available.
-
 # What It Does
 
 - **Read conversations:** Print user messages, assistant replies, tool activity, and file diffs.
